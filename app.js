@@ -285,107 +285,123 @@ const SMART_ERR = {
 };
 
 /* After Gemini identified the poem: open it at once, then fill in the recordings. */
+/* ---------- from a part of a poem to the poem, then its recordings ---------- */
+const svRec = (x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيعة", reciter: x.artist, note: x.title, duration: x.duration, match: x.score >= 0.75 ? "good" : "maybe" });
+const ytRec = (v, good) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: good ? "good" : "maybe" });
+
+/* Step 1: which poem is this part from? Look the part up once, and let Gemini name the poem from the real results. */
+async function namePart(fragment, info, signal){
+  let evidence = [];
+  try { evidence = await S.findVideos({ title: "", queries: [(info && info.queries && info.queries[0]) || fragment], verses: (info && info.verses) || [[fragment, ""]], refrain: (info && info.refrain) || "", opening: (info && info.opening) || fragment, reciter: "" }, signal, { max: 1, noExtra: true }); }
+  catch (e){ if (e.code === "cancelled") throw e; }
+  let named = null;
+  try { named = await S.namePoem(fragment, evidence, signal); } catch (e){ if (e.code === "cancelled") throw e; }
+  return { evidence, named };
+}
+
+/* Step 2: with the poem's real title, look for ITS recordings (ShiaVoice and YouTube together). */
+async function findRecordings(poem, evidence, named, signal, onPart){
+  const title = poem.title, reciter = (poem.reciters || [])[0] || "";
+  const t = M.compact(title);
+  const evHits = (evidence || []).filter((v, i) => (named && named.matches && named.matches.includes(i + 1)) || (t.length >= 5 && M.compact(v.title).includes(t)));
+  const out = { sv: [], yt: [] };
+  const merge = () => {
+    const seen = new Set(), list = [];
+    for (const x of out.sv) list.push(svRec(x));
+    for (const v of [...evHits, ...out.yt]) { if (seen.has(v.id)) continue; seen.add(v.id); const good = evHits.includes(v) || v.score >= 0.75; if (good || list.filter((r) => r.type === "youtube").length < 2) list.push(ytRec(v, good)); }
+    return list.slice(0, 12);
+  };
+  const ytP = S.hasYouTube() ? S.findVideos({ title, reciter, poet: poem.poet || "", queries: [], verses: [], refrain: poem.refrain || "", opening: poem.opening || "" }, signal, { max: 1, noExtra: true })
+    .then((v) => { out.yt = v.filter((x) => x.score >= 0.6); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
+  const svP = window.QSources && QSources.available() ? QSources.findShiavoice({ title, opening: poem.opening || "", refrain: poem.refrain || "", reciter, queries: [], verses: [] }, signal)
+    .then((x) => { out.sv = x; onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
+  onPart && evHits.length && onPart(merge());
+  await Promise.all([ytP, svP]);
+  return merge();
+}
+
+/* Open the poem now, then fill in its recordings as each source answers. */
+async function openAndFill(poem, page, evidence, named, ctl){
+  if (poem.temp) state.temp = poem;
+  else { const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild(); }
+  page.searching = true;
+  openPoem(poemById(poem.id), page);
+  const save = (recs) => {
+    if (!recs.length) return;
+    if (poem.temp){ state.temp.recordings = recs; }
+    else { const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === poem.id); if (it){ it.recordings = recs; lsSet(LS.local, l2); } rebuild(); }
+    if (state.poemId === poem.id && state.view === "poem" && $("#audio").paused && !document.querySelector("#view-poem .yt iframe")) renderPoem(poem.id);
+  };
+  const recs = await findRecordings(poem, evidence, named, ctl.signal, save);
+  page.searching = false;
+  save(recs);
+  if (state.poemId === poem.id && state.view === "poem" && $("#audio").paused && !document.querySelector("#view-poem .yt iframe")) renderPoem(poem.id);
+}
+
+function cleanVideoTitle(t){
+  const parts = String(t || "").split(/\s*[|\-–—_:#(\[«»"]+\s*/).map((x) => x.replace(/[^\u0621-\u064A\s]/g, " ").replace(/\s+/g, " ").trim()).filter((x) => x.length >= 4);
+  return parts[0] || "";
+}
+function newPoem(fields){
+  return { id: "local-" + Date.now().toString(36), aliases: [], poet: "", opening: "", refrain: "", keywords: [], subject: "", reciters: [], books: [], recordings: [], smart: true, ...fields };
+}
+function rememberFragment(p, q){
+  if (!p.local || !q) return;
+  const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id);
+  if (it && !(it.keywords || []).some((k) => M.compact(k) === M.compact(q))){ it.keywords = [...(it.keywords || []), q.slice(0, 60)].slice(-12); lsSet(LS.local, local); rebuild(); }
+}
+
+/* A page photo or a recording, read by Gemini. */
 async function smartFlow(info, raw, ctl){
   if (!info.is_poem){ work(null); note("لم أتعرّف على قصيدة في هذا. صوّر الصفحة كاملة أو أسمِعني مقطعاً أوضح.", true); return; }
   const clean = [info.title, info.refrain, info.opening, ...info.verses.map((v) => v.join(" "))].join("\n");
   const lm = M.findMatches(state.poems, clean, false);
   if (lm.best){ work(null); openPoem(lm.best.p, { verses: info.verses, raw }); return; }
-
-  const title = info.title || info.refrain || info.opening || (info.verses[0] || [""])[0] || "قصيدة";
-  const id = "local-" + Date.now().toString(36);
-  const poem = {
-    id, title: title.slice(0, 120), aliases: [], poet: info.poet, opening: info.opening, refrain: info.refrain,
-    keywords: [info.refrain, ...info.verses.slice(0, 4).map((v) => v[0])].filter((s) => s && s.length >= 8).map((s) => s.slice(0, 60)),
-    subject: info.subject, reciters: info.reciter ? [info.reciter] : [], books: info.page ? [{ book: "", page: info.page }] : [],
-    recordings: [], smart: true, titleInferred: !info.title_printed && !!info.title, confidence: info.confidence
-  };
-  const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
+  const fragment = [info.refrain, ...info.verses.slice(0, 3).map((v) => v.join(" "))].filter(Boolean).join(" / ") || info.opening || info.title;
+  let title = info.title, poet = info.poet, reciter = info.reciter, confidence = info.confidence, evidence = [], named = null;
+  if (!info.title_printed && S.hasYouTube()){
+    work("أتعرّف على القصيدة…", "من الأبيات");
+    try { ({ evidence, named } = await namePart(fragment, info, ctl.signal)); } catch { return; }
+    if (named && named.title){ title = named.title; poet = poet || named.poet; reciter = reciter || named.reciter; confidence = named.confidence; }
+  }
   work(null);
-  const page = { verses: info.verses, raw, smartNew: true, searching: S.hasYouTube() };
-  openPoem(poemById(id), page);
-  if (!S.hasYouTube()) return;
-  let vids = [];
-  try { vids = await S.findVideos(info, ctl.signal); }
-  catch (e){ if (e.code === "cancelled") return; page.ytErr = e.code; }
-  const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
-  const picked = good.length ? good : vids.slice(0, 3);
-  let recs = picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
-  let named = null;
-  if (!info.title_printed && vids.length){
-    const fragment = [info.refrain, ...info.verses.slice(0, 4).map((v) => v.join(" "))].filter(Boolean).join(" / ") || info.opening;
-    try { named = await S.namePoem(fragment, vids, ctl.signal); } catch (e){ if (e.code === "cancelled") return; }
-    if (named && named.title) recs = recsFromNamed(vids, named);
+  if (title){
+    const known = M.findMatches(state.poems, title, true);
+    if (known.best && known.best.s >= 0.8){ rememberFragment(known.best.p, fragment); openPoem(known.best.p, { verses: info.verses, raw }); return; }
   }
-  const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id);
-  if (it){
-    it.recordings = recs;
-    if (named && named.title){ it.title = named.title.slice(0, 120); it.poet = it.poet || named.poet; if (!it.reciters.length && named.reciter) it.reciters = [named.reciter]; it.opening = it.opening || named.opening; it.confidence = named.confidence; }
-    lsSet(LS.local, l2);
-  }
-  rebuild();
-  page.searching = false;
-  if (state.poemId === id && state.view === "poem") renderPoem(id);
+  const poem = newPoem({ title: (title || info.opening || fragment || "قصيدة").slice(0, 120), poet, opening: info.opening, refrain: info.refrain,
+    keywords: [info.refrain, ...info.verses.slice(0, 4).map((v) => v[0])].filter((s) => s && s.length >= 8).map((s) => s.slice(0, 60)),
+    subject: info.subject, reciters: reciter ? [reciter] : [], books: info.page ? [{ book: "", page: info.page }] : [],
+    titleInferred: !info.title_printed, confidence });
+  await openAndFill(poem, { verses: info.verses, raw, smartNew: true }, evidence, named, ctl);
 }
 
-/* Order videos: the ones Gemini says are this very poem first, marked as a match. */
-function recsFromNamed(vids, named){
-  const set = new Set((named && named.matches) || []);
-  const t = M.compact((named && named.title) || "");
-  const scored = vids.map((v, i) => ({ v, hit: set.has(i + 1) || (t.length >= 5 && M.compact(v.title).includes(t)) }));
-  const hits = scored.filter((x) => x.hit), rest = scored.filter((x) => !x.hit && x.v.score >= (set.size ? 0.8 : 0.6));
-  return [...hits, ...(hits.length ? rest.slice(0, 2) : rest.slice(0, 4))].slice(0, 8)
-    .map(({ v, hit }) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: hit ? "good" : "maybe" }));
-}
-function cleanVideoTitle(t){
-  const parts = String(t || "").split(/\s*[|\-–—_:#(\[«»"]+\s*/).map((s) => s.replace(/[^ء-ي\s]/g, " ").replace(/\s+/g, " ").trim()).filter((s) => s.length >= 4);
-  return parts[0] || "";
-}
-
-/* Typed or dictated part of a poem: find the ORIGINAL poem (title, poet, reciter), then its recordings. */
+/* Typed or dictated part of a poem. */
 async function textSearch(q){
   q = q.trim(); if (q.length < 2) return;
   const m = M.findMatches(state.poems, q, true);
   if (m.best){ openPoem(m.best.p, { query: q }); return; }
-  if (!S.hasYouTube()){
+  if (!S.hasYouTube() || !S.ready()){
     go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
   }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
   work("أتعرّف على القصيدة…", "من الجزء الذي أعطيته");
-  let vids = [], ytErr = null, named = null;
-  try { vids = await S.findVideos({ title: "", queries: [q], verses: [[q, ""]], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true }); }
-  catch (e){ if (e.code === "cancelled") return; ytErr = e.code; }
-  if (S.ready()){
-    try { named = await S.namePoem(q, vids, ctl.signal); }
-    catch (e){ if (e.code === "cancelled") return; }
-  }
+  let evidence = [], named = null;
+  try { ({ evidence, named } = await namePart(q, null, ctl.signal)); } catch { return; }
   if (ctl.signal.aborted) return;
   work(null);
-  if (!(named && named.title) && !vids.length){
-    note(ytErr && SMART_ERR[ytErr] ? SMART_ERR[ytErr] : "لم أتعرّف على القصيدة من «" + q + "». جرّب بيتاً أطول أو أوضح.", true); return;
+  if (!(named && named.title)){
+    // Gemini could not name it: if the search found something, show it clearly marked as unsure.
+    const guess = cleanVideoTitle((evidence[0] || {}).title);
+    if (!guess){ note("لم أتعرّف على القصيدة من «" + q + "». جرّب بيتاً أطول أو أوضح، أو المطلع.", true); return; }
+    named = { title: guess, poet: "", reciter: "", opening: "", matches: [1], confidence: "low" };
   }
-  const title = (named && named.title) || cleanVideoTitle((vids[0] || {}).title) || q;
-  // Maybe the poem is already in the index under its real title.
-  const known = M.findMatches(state.poems, title, true);
+  const known = M.findMatches(state.poems, named.title, true);
   if (known.best && known.best.s >= 0.8){ rememberFragment(known.best.p, q); openPoem(known.best.p, { query: q }); return; }
-  const recs = named ? recsFromNamed(vids, named) : vids.slice(0, 6).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
-  const reciter = (named && named.reciter) || "";
-  const poem = { title: title.slice(0, 120), aliases: [], poet: (named && named.poet) || "", opening: (named && named.opening) || "", refrain: "",
-    keywords: [q.slice(0, 60)], subject: "", reciters: reciter ? [reciter] : [], books: [], recordings: recs,
-    smart: true, titleInferred: true, confidence: named ? named.confidence : "low" };
-  if (named && named.title && named.confidence !== "low"){
-    // Keep it on the phone, with the words given, so the same part is recognised at once next time.
-    poem.id = "local-" + Date.now().toString(36);
-    const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
-    openPoem(poemById(poem.id), { query: q });
-  } else {
-    state.temp = { ...poem, id: "tmp", temp: true };
-    openPoem(state.temp, { query: q, unsure: true });
-  }
-}
-function rememberFragment(p, q){
-  if (!p.local) return;
-  const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id);
-  if (it && !(it.keywords || []).some((k) => M.compact(k) === M.compact(q))){ it.keywords = [...(it.keywords || []), q.slice(0, 60)].slice(-12); lsSet(LS.local, local); rebuild(); }
+  const poem = newPoem({ title: named.title.slice(0, 120), poet: named.poet, opening: named.opening, keywords: [q.slice(0, 60)],
+    reciters: named.reciter ? [named.reciter] : [], titleInferred: true, confidence: named.confidence });
+  if (named.confidence === "low"){ poem.id = "tmp"; poem.temp = true; }
+  await openAndFill(poem, { query: q, unsure: named.confidence === "low" }, evidence, named, ctl);
 }
 
 async function moreFromShiavoice(p, btn, msg){
