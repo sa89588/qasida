@@ -296,7 +296,10 @@ function bookAudio(a, p) {
       stopAll();
       const au = el("audio", { controls: true, preload: "none", src: a.src });
       li.append(el("div", { class: "player" }, au,
-        el("a", { class: "small", href: a.src, download: "", target: "_blank", rel: "noopener" }, "تنزيل الملف")));
+        el("div", { class: "row pact" },
+          el("a", { class: "btn small", href: a.src, download: "", target: "_blank", rel: "noopener" }, dlIcon(), "تنزيل"),
+          el("button", { class: "btn ghost small", type: "button", onclick: stopAll }, "إيقاف"))));
+      au.play().catch(() => {});   // the person pressed play: start it
       main.querySelector(".play").hidden = true;
     } }, playIcon()),
     el("div", { class: "rtext" }, el("strong", {}, a.reciter || p.title), el("small", { class: "muted" }, a.source || "شبكة رافد")));
@@ -306,8 +309,15 @@ function svRow(x) {
   const li = el("li", { class: "rec" });
   const btn = el("button", { class: "play", type: "button", "aria-label": "تشغيل " + x.title + " — " + x.artist, onclick: () => {
     stopAll();
+    // ShiaVoice's player needs ~600px; on a phone its play button falls off-screen. Lay it out wide and
+    // show the part that holds the play button and progress bar (title and reciter are already in our row).
     li.append(el("div", { class: "player" },
-      el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + encodeURIComponent(x.id), title: x.title + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin", loading: "lazy" })));
+      el("div", { class: "svwrap" },
+        el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + encodeURIComponent(x.id), title: x.title + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" })),
+      el("div", { class: "row pact" },
+        el("a", { class: "btn small", href: "https://shiavoice.com/play-" + encodeURIComponent(x.id), target: "_blank", rel: "noopener" }, dlIcon(), "تنزيل"),
+        el("span", { class: "muted small" }, "يفتح صفحة الملف في صوت الشيعة، وفيها زر التحميل"),
+        el("button", { class: "btn ghost small", type: "button", onclick: stopAll }, "إيقاف"))));
     btn.hidden = true; li.classList.add("on");
   } }, playIcon());
   li.append(el("div", { class: "recmain" }, btn,
@@ -320,6 +330,7 @@ function svRow(x) {
 function stopAll() {
   for (const p of document.querySelectorAll(".player")) { const li = p.closest("li"); p.remove(); li.classList.remove("on"); const b = li.querySelector(".play"); if (b) b.hidden = false; }
 }
+function dlIcon() { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "18"); s.setAttribute("height", "18"); s.setAttribute("aria-hidden", "true"); s.innerHTML = '<path fill="currentColor" d="M11 3h2v9.2l3.3-3.3 1.4 1.4L12 16l-5.7-5.7 1.4-1.4 3.3 3.3V3ZM5 18h14v2H5z"/>'; return s; }
 function playIcon() { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "20"); s.setAttribute("height", "20"); s.setAttribute("aria-hidden", "true"); s.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>'; return s; }
 
 /* ---------- wiring ---------- */
