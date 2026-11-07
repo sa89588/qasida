@@ -299,3 +299,11 @@ details.card[open] > summary{margin-bottom:6px}
 .arow.sv .svframe{height:96px}
 .svmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .svmeta .chip{margin-inline-start:auto;padding:5px 10px;font-size:.8rem}
+
+/* v9: video card */
+.vlist{display:flex;flex-direction:column;gap:12px}
+details.more > .vlist{margin-top:10px}
+.vrow{display:flex;flex-direction:column;gap:8px}
+.vrow .svmeta .tag{font-size:.72rem}
+.vrow .tag{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;color:var(--good);border:1px solid currentColor;white-space:nowrap}
+.vrow .tag.maybe{color:var(--warn)}
