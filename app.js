@@ -267,9 +267,12 @@ async function recognize(colorCanvas){
   if (m.best){ ctl.abort(); work(null); openPoem(m.best.p, { raw: text }); return; }
   if (!smartP){ work(null); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
   let info;
+  // Start looking on ShiaVoice with the title read on the phone while Gemini is still reading the page.
+  const guess = M.guessTitle(text);
+  const early = SV.available() && guess.split(" ").length >= 2 ? SV.search(guess, ctl.signal).catch(() => []) : null;
   try { info = await smartP; }
   catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
-  await smartFlow(info, text, ctl);
+  await smartFlow(info, text, ctl, early);
 }
 
 const SMART_ERR = {
@@ -289,9 +292,9 @@ const svRec = (x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيع�
 const ytRec = (v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" });
 
 /* Look in every available source at the same time. */
-async function findAll(info, signal, ytOpts){
+async function findAll(info, signal, ytOpts, early){
   const [sv, yt] = await Promise.allSettled([
-    SV.available() ? SV.findShiavoice(info, signal) : Promise.resolve([]),
+    SV.available() ? SV.findShiavoice(info, signal, early) : Promise.resolve([]),
     S.hasYouTube() ? S.findVideos(info, signal, ytOpts) : Promise.resolve([])
   ]);
   const svList = sv.status === "fulfilled" ? sv.value : [];
@@ -303,7 +306,7 @@ async function findAll(info, signal, ytOpts){
 }
 
 /* After Gemini identified the poem: open it at once, then fill in the recordings. */
-async function smartFlow(info, raw, ctl){
+async function smartFlow(info, raw, ctl, early){
   if (!info.is_poem){ work(null); note("لم أتعرّف على قصيدة في هذا. صوّر الصفحة كاملة أو أسمِعني مقطعاً أوضح.", true); return; }
   const clean = [info.title, info.refrain, info.opening, ...info.verses.map((v) => v.join(" "))].join("\n");
   const lm = M.findMatches(state.poems, clean, false);
@@ -323,7 +326,7 @@ async function smartFlow(info, raw, ctl){
   const page = { verses: info.verses, raw, smartNew: true, searching: any };
   openPoem(poemById(id), page);
   if (!any) return;
-  const r = await findAll(info, ctl.signal);
+  const r = await findAll(info, ctl.signal, undefined, early);
   if (r.cancelled && !r.recs.length) return;
   page.ytErr = r.ytErr;
   const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id); if (it){ it.recordings = r.recs; lsSet(LS.local, l2); }
@@ -476,7 +479,7 @@ function renderPoem(id){
       list.append(b);
     });
     const card = el("div", { class: "card" }, stage);
-    if (recs.length > 1) card.append(el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), list);
+    if (recs.length > 1) card.append(el("details", { class: "more" }, el("summary", { text: "تسجيلات أخرى (" + ar(recs.length - 1) + ")" }), list));
     v.append(card);
     const auto = !!(page && page.autoplay); if (page) page.autoplay = false;
     mount(stage, p, recs[0], auto);
@@ -506,8 +509,8 @@ function renderPoem(id){
       box.append(b ? el("div", { class: "v" }, el("span", { text: a }), el("span", { text: b })) : el("div", { class: "v one" }, el("span", { text: a })));
     }
     const cm = el("span", { class: "small muted", "aria-live": "polite" });
-    v.append(el("div", { class: "card" }, el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("h3", { class: "card-t", text: "نص الصفحة" }),
-      el("button", { type: "button", class: "chip-btn", style: "color:var(--ink);border-color:var(--line)", onclick: () => copyText([p.title, ...verses.map(([a, b]) => b ? a + "    " + b : a)].join("\n"), cm) }, "نسخ")), box, cm));
+    v.append(el("details", { class: "card" }, el("summary", { text: "نص القصيدة" }), box,
+      el("div", { class: "row gap" }, el("button", { type: "button", class: "chip", onclick: () => copyText([p.title, ...verses.map(([a, b]) => b ? a + "    " + b : a)].join("\n"), cm) }, "نسخ النص"), cm)));
   } else if (page && page.raw && page.raw.trim()){
     v.append(el("details", { class: "card" }, el("summary", { text: "النص كما قرأه الهاتف" }), el("pre", { class: "raw", text: page.raw.trim() }),
       el("p", { class: "small muted", text: "قراءة آلية سريعة وقد تخطئ في بعض الكلمات." })));
@@ -863,6 +866,7 @@ function addForm(poem, guessTitle){
 function renderSmartCard(){
   const c = $("#smartCard"); c.replaceChildren();
   const on = S.ready(), yt = S.hasYouTube();
+  c.hidden = on;
   c.append(el("span", { class: "dot " + (on ? "on" : "off") }),
     el("div", null, el("b", { text: on ? "التعرّف الذكي مفعّل" : "التعرّف الذكي غير مفعّل" }),
       el("small", { text: on ? (yt ? "يتعرّف على أي قصيدة ويبحث عن تسجيلها." : "يقرأ أي قصيدة. أضف مفتاح يوتيوب ليجد تسجيلها.") : "حالياً يتعرّف على قصائد الفهرس فقط. فعّله ليتعرّف على أي قصيدة." })),
@@ -959,6 +963,7 @@ let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTime
 $$(".tabbar a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.tab); }));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.stream) stopCamera(); });
 
+$("#ytForm").addEventListener("submit", (e) => { e.preventDefault(); $("#keysForm").requestSubmit(); $("#keysMsg").scrollIntoView({ block: "center" }); });
 $("#workerForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const u = $("#kWorker").value.trim(), msg = $("#workerMsg");

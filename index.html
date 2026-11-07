@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <header class="appbar">
@@ -118,7 +118,7 @@
 
     <div class="card">
       <h3 class="card-t">التعرّف الذكي على أي قصيدة</h3>
-      <p class="muted small">بدونه يتعرّف التطبيق فقط على القصائد الموجودة في الفهرس. بعد تفعيله يقرأ أي صفحة، حتى لو لم يكن فيها عنوان أو اسم شاعر، ثم يبحث عن تسجيلها في يوتيوب ويشغّله هنا. المفتاحان مجانيان، ويُحفظان على هاتفك فقط.</p>
+      <p class="muted small">مفتاح واحد مجاني يكفي: بعده يتعرّف التطبيق على أي قصيدة من الصورة أو الصوت، ويبحث عن تسجيلها في صوت الشيعة. يُحفظ على هاتفك فقط.</p>
       <form id="keysForm" class="stack">
         <label class="f" for="kGemini">
           <span>مفتاح Gemini (لقراءة الصفحة)</span>
@@ -131,6 +131,27 @@
             <li>اضغط <b>Create API key</b> ثم انسخ المفتاح والصقه هنا.</li>
           </ol>
         </details>
+
+        <div class="row gap">
+          <button type="submit" class="btn primary">احفظ واختبر</button>
+          <label class="toggle"><input type="checkbox" id="kShow"> إظهار المفتاح</label>
+        </div>
+        <p class="small" id="keysMsg" aria-live="polite"></p>
+      </form>
+      <p class="muted small">عند التعرّف الذكي تُرسل صورة الصفحة إلى Google لقراءتها. أما القصائد الموجودة في الفهرس فتُقرأ على هاتفك دون إرسال شيء.</p>
+    </div>
+
+
+
+
+
+
+    <details class="card adv">
+      <summary>إعدادات متقدمة (اختيارية)</summary>
+      <div class="stack">
+        <h3 class="card-t">يوتيوب</h3>
+        <p class="muted small">لإضافة مقاطع يوتيوب إلى النتائج. يعمل غالباً بمفتاح Gemini نفسه إن فعّلت يوتيوب على مشروعه؛ وإلا أضف مفتاحاً هنا.</p>
+        <form id="ytForm" class="stack">
         <label class="f" for="kYoutube">
           <span>مفتاح YouTube (للبحث عن التسجيل)</span>
           <input type="password" id="kYoutube" dir="ltr" autocomplete="off" spellcheck="false" placeholder="AIza... (اختياري إن فعّلت يوتيوب على مفتاح Gemini)">
@@ -143,16 +164,9 @@
             <li>للحماية: افتح المفتاح واختر <b>Websites</b> وأضف <code dir="ltr">sa89588.github.io/*</code></li>
           </ol>
         </details>
-        <div class="row gap">
-          <button type="submit" class="btn primary">احفظ واختبر</button>
-          <label class="toggle"><input type="checkbox" id="kShow"> إظهار المفاتيح</label>
-        </div>
-        <p class="small" id="keysMsg" aria-live="polite"></p>
-      </form>
-      <p class="muted small">عند التعرّف الذكي تُرسل صورة الصفحة إلى Google لقراءتها. أما القصائد الموجودة في الفهرس فتُقرأ على هاتفك دون إرسال شيء.</p>
-    </div>
-
-    <div class="card">
+        </form>
+      </div>
+    <div class="stack">
       <h3 class="card-t">البحث في صوت الشيعة</h3>
       <p class="muted small">يبحث التطبيق في صوت الشيعة مع يوتيوب، ويشغّل التسجيلات بمشغّل صوت الشيعة نفسه داخل التطبيق. يعمل عبر Gemini إن كان مفعّلاً، والأسرع والأدق أن تنشئ خادم بحث صغيراً مجانياً (خمس دقائق، مرة واحدة).</p>
       <form id="workerForm" class="stack">
@@ -175,8 +189,7 @@
         <p class="small" id="workerMsg" aria-live="polite"></p>
       </form>
     </div>
-
-    <div class="card">
+    <div class="stack">
       <h3 class="card-t">سرعة التعرّف الذكي</h3>
       <div class="seg" role="radiogroup" aria-label="سرعة التعرّف" id="modeSeg">
         <button type="button" role="radio" data-v="fast">أسرع</button>
@@ -184,6 +197,7 @@
       </div>
       <p class="muted small">«أسرع» يردّ عادة خلال ثانيتين إلى خمس ثوانٍ. جرّب «أدق» إن أخطأ في قراءة صفحة بخط صعب.</p>
     </div>
+    </details>
 
     <div class="card">
       <h3 class="card-t">المظهر</h3>
@@ -214,7 +228,7 @@
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small" id="verLine">الإصدار ٦</p>
+      <p class="muted small" id="verLine">الإصدار ٧</p>
     </div>
   </section>
 </main>
@@ -257,12 +271,12 @@
 </div>
 
 <audio id="audio" preload="metadata"></audio>
-<script src="vendor/tesseract/tesseract.min.js?v=6"></script>
-<script src="match.js?v=6"></script>
-<script src="smart.js?v=6"></script>
-<script src="voice.js?v=6"></script>
-<script src="media.js?v=6"></script>
-<script src="sources.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="vendor/tesseract/tesseract.min.js?v=7"></script>
+<script src="match.js?v=7"></script>
+<script src="smart.js?v=7"></script>
+<script src="voice.js?v=7"></script>
+<script src="media.js?v=7"></script>
+<script src="sources.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

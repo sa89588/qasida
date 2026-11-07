@@ -54,10 +54,10 @@
     if (rec.length >= 4 && M.poetKey(item.artist).includes(rec)) s += 0.08;
     return Math.min(s, 1.1);
   }
-  async function findShiavoice(info, signal) {
+  async function findShiavoice(info, signal, early) {
     const qs = [...new Set([info.title, info.opening, info.refrain].map((q) => String(q || "").trim()).filter((q) => q.length >= 3))].slice(0, 2);
     if (!qs.length && info.queries && info.queries[0]) qs.push(info.queries[0]);
-    const res = await Promise.allSettled(qs.map((q) => svSearch(q, signal)));
+    const res = await Promise.allSettled([...qs.map((q) => svSearch(q, signal)), ...(early ? [early] : [])]);
     const seen = new Map();
     for (const r of res) if (r.status === "fulfilled") for (const it of r.value) if (!seen.has(it.id)) seen.set(it.id, { ...it, score: rank(it, info) });
     if (!seen.size) { const bad = res.find((r) => r.status === "rejected"); if (bad) throw bad.reason; }
@@ -67,5 +67,5 @@
     const items = await viaWorker("غضب رب العباد");
     return items.length;
   }
-  root.QSources = { worker, setWorker, available, hasWorker: () => !!worker(), findShiavoice, test };
+  root.QSources = { worker, setWorker, available, hasWorker: () => !!worker(), findShiavoice, search: svSearch, test };
 })(self);
