@@ -1,8 +1,8 @@
 /* Offline support: the app shell and the on-device reader are cached; the poem index is refreshed when online.
    Audio and YouTube stream from their sources and are not cached. */
-const VERSION = "qasida-v1";
+const VERSION = "qasida-v2";
 const SHELL = [
-  "./", "index.html", "styles.css", "app.js", "match.js", "poems.json", "manifest.webmanifest",
+  "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "poems.json", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
   "vendor/tesseract/tesseract.min.js", "vendor/tesseract/worker.min.js"
 ];

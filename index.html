@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>قارئ القصائد الحسينية</title>
 <meta name="description" content="وجّه الكاميرا إلى صفحة القصيدة فتسمعها بصوت الرادود مباشرة.">
-<meta name="theme-color" content="#8f1c21">
+<meta name="theme-color" content="#14090b">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -13,80 +13,186 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="قارئ القصائد">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script>try{var t=localStorage.getItem("qasida.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <div class="brand">
-      <img src="icons/icon-192.png" alt="" width="40" height="40">
-      <div>
-        <h1>قارئ القصائد الحسينية</h1>
-        <p class="muted small">وجّه الكاميرا إلى صفحة القصيدة فتسمعها بصوت الرادود</p>
-      </div>
+<header class="appbar">
+  <div class="appbar-in">
+    <img src="icons/icon-192.png" alt="" width="36" height="36">
+    <div class="appbar-t">
+      <h1>قارئ القصائد</h1>
+      <p>الكلمة تُقرأ… والقصيدة تُسمع</p>
     </div>
-    <button type="button" id="installBtn" class="btn ghost" hidden>ثبّت التطبيق</button>
-  </header>
-  <p class="hint" id="iosHint" hidden>للتثبيت على آيفون: اضغط زر المشاركة <span aria-hidden="true">⎋</span> في سفاري ثم اختر «إضافة إلى الشاشة الرئيسية».</p>
-  <p class="hint" id="updateHint" hidden>نسخة جديدة من التطبيق جاهزة. <button type="button" class="linkbtn" id="reloadBtn">حدّث الآن</button></p>
+    <button type="button" id="installBtn" class="chip-btn" hidden>تثبيت</button>
+  </div>
+</header>
 
-  <section class="panel scan" aria-labelledby="scanH">
-    <h2 id="scanH" class="vh">المسح بالكاميرا</h2>
-    <div class="cam" id="cam">
+<main id="main">
+  <p class="banner" id="updateHint" hidden>نسخة جديدة جاهزة. <button type="button" class="linkbtn" id="reloadBtn">حدّث الآن</button></p>
+  <p class="banner" id="iosHint" hidden>للتثبيت على آيفون: اضغط زر المشاركة في سفاري ثم «إضافة إلى الشاشة الرئيسية».</p>
+
+  <!-- المسح -->
+  <section class="view" id="view-scan" aria-labelledby="scanH">
+    <h2 id="scanH" class="vh">المسح</h2>
+    <div class="stage" id="stage">
       <video id="video" playsinline muted autoplay></video>
-      <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div class="cam-idle" id="camIdle">
-        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-        <p>ضع الصفحة كاملة داخل الإطار، والعنوان ظاهر في أعلاها.</p>
+      <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="beam" aria-hidden="true"></div>
+      <div class="idle" id="idle">
+        <button type="button" class="start" id="camBtn" aria-label="افتح الكاميرا">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3.5 8h3.2l2-3h6.6l2 3h3.2v11h-17z"/><circle cx="12" cy="13" r="3.6"/></svg>
+        </button>
+        <p class="idle-t">اضغط لفتح الكاميرا</p>
+        <p class="idle-s">ضع صفحة القصيدة داخل الإطار، وسيتعرّف عليها التطبيق ويشغّلها</p>
       </div>
-      <div class="cam-status" id="camStatus" aria-live="polite" hidden></div>
+      <p class="status" id="camStatus" aria-live="polite" hidden></p>
+      <div class="cam-bar" id="camBar" hidden>
+        <label class="round" id="pickLbl2" aria-label="اختر صورة من المعرض">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+          <input type="file" accept="image/*" class="vh pick">
+        </label>
+        <button type="button" class="shutter" id="shotBtn" aria-label="التقط الصورة الآن"><span></span></button>
+        <button type="button" class="round" id="torchBtn" aria-label="الفلاش" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M13 2 5 13h6l-1 9 8-11h-6z"/></svg>
+        </button>
+        <button type="button" class="round close" id="stopBtn" aria-label="أغلق الكاميرا">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
     </div>
-    <div class="row controls">
-      <button type="button" class="btn primary" id="camBtn">افتح الكاميرا</button>
-      <button type="button" class="btn" id="shotBtn" hidden>التقط الآن</button>
-      <button type="button" class="btn" id="torchBtn" hidden aria-pressed="false">الفلاش</button>
-      <button type="button" class="btn" id="stopBtn" hidden>أغلق الكاميرا</button>
-      <label class="btn" id="pickLbl">
-        اختر صورة
-        <input type="file" id="pickIn" accept="image/*" class="vh">
+
+    <div class="work" id="work" hidden>
+      <div class="spin" aria-hidden="true"></div>
+      <div class="work-t"><strong id="workTitle">جاري القراءة…</strong><span id="workSub"></span></div>
+      <button type="button" class="chip-btn" id="cancelBtn">إلغاء</button>
+    </div>
+    <p class="note" id="camNote" hidden></p>
+
+    <div class="row gap">
+      <label class="btn wide">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+        اختر صورة من المعرض
+        <input type="file" accept="image/*" class="vh pick">
       </label>
     </div>
-    <p class="small muted" id="camNote">يقرأ التطبيق الصفحة على هاتفك نفسه، ويتعرّف على القصيدة تلقائياً خلال ثوانٍ.</p>
-    <div class="progress" id="progress" hidden><div class="bar" id="bar"></div><span id="progText"></span></div>
-    <form class="search" id="searchForm" role="search">
-      <label class="vh" for="q">ابحث بعنوان القصيدة أو مطلعها أو اسم الشاعر</label>
-      <input type="search" id="q" placeholder="أو اكتب العنوان أو المطلع أو اسم الشاعر" autocomplete="off">
-      <button type="submit" class="btn">ابحث</button>
-    </form>
+
+    <a class="smart-card" id="smartCard" href="#settings"></a>
+
+    <div class="recent" id="recentBox" hidden>
+      <h3 class="sec">آخر ما استمعت إليه</h3>
+      <div class="recent-row" id="recent"></div>
+    </div>
   </section>
 
-  <section class="panel" id="result" hidden aria-live="polite"></section>
+  <!-- القصيدة -->
+  <section class="view" id="view-poem" hidden></section>
 
-  <section class="panel" aria-labelledby="idxH">
-    <div class="row between">
-      <h2 id="idxH" class="h3">فهرس القصائد</h2>
-      <span class="small muted" id="idxCount"></span>
+  <!-- الفهرس -->
+  <section class="view" id="view-index" hidden aria-labelledby="idxH">
+    <div class="view-head">
+      <h2 id="idxH">الفهرس</h2>
+      <span class="count" id="idxCount"></span>
     </div>
+    <form class="search" id="searchForm" role="search">
+      <label class="vh" for="q">ابحث بالعنوان أو المطلع أو الشاعر أو الرادود</label>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
+      <input type="search" id="q" placeholder="العنوان، المطلع، الشاعر أو الرادود" autocomplete="off">
+    </form>
     <div class="list" id="index"><p class="muted">جاري تحميل الفهرس…</p></div>
-    <details class="mine" id="mine">
-      <summary>إضافاتي على هذا الهاتف</summary>
-      <p class="small muted">الروابط والقصائد التي تضيفها تُحفظ على هاتفك. شاركها مع مشرف الفهرس ليضيفها للجميع.</p>
-      <div class="row">
-        <button type="button" class="btn" id="exportBtn">شارك إضافاتي</button>
-        <span class="small muted" id="exportMsg" aria-live="polite"></span>
+    <div class="search-more" id="searchMore" hidden></div>
+  </section>
+
+  <!-- الإعدادات -->
+  <section class="view" id="view-settings" hidden aria-labelledby="setH">
+    <div class="view-head"><h2 id="setH">الإعدادات</h2></div>
+
+    <div class="card">
+      <h3 class="card-t">التعرّف الذكي على أي قصيدة</h3>
+      <p class="muted small">بدونه يتعرّف التطبيق فقط على القصائد الموجودة في الفهرس. بعد تفعيله يقرأ أي صفحة، حتى لو لم يكن فيها عنوان أو اسم شاعر، ثم يبحث عن تسجيلها في يوتيوب ويشغّله هنا. المفتاحان مجانيان، ويُحفظان على هاتفك فقط.</p>
+      <form id="keysForm" class="stack">
+        <label class="f" for="kGemini">
+          <span>مفتاح Gemini (لقراءة الصفحة)</span>
+          <input type="password" id="kGemini" dir="ltr" autocomplete="off" spellcheck="false" placeholder="AIza...">
+        </label>
+        <details class="howto">
+          <summary>كيف أحصل عليه؟ (دقيقة واحدة)</summary>
+          <ol>
+            <li>افتح <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> وسجّل الدخول بحساب Google.</li>
+            <li>اضغط <b>Create API key</b> ثم انسخ المفتاح والصقه هنا.</li>
+          </ol>
+        </details>
+        <label class="f" for="kYoutube">
+          <span>مفتاح YouTube (للبحث عن التسجيل)</span>
+          <input type="password" id="kYoutube" dir="ltr" autocomplete="off" spellcheck="false" placeholder="AIza... (اختياري إن فعّلت يوتيوب على مفتاح Gemini)">
+        </label>
+        <details class="howto">
+          <summary>كيف أحصل عليه؟</summary>
+          <ol>
+            <li>افتح <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">صفحة YouTube Data API v3</a> بنفس حساب Google، واختر المشروع نفسه الذي أنشأه AI Studio، ثم اضغط <b>Enable</b>.</li>
+            <li>من <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> اضغط <b>Create credentials ← API key</b> وانسخه هنا. يكفي يومياً لنحو ٣٠ إلى ١٠٠ قصيدة جديدة.</li>
+            <li>للحماية: افتح المفتاح واختر <b>Websites</b> وأضف <code dir="ltr">sa89588.github.io/*</code></li>
+          </ol>
+        </details>
+        <div class="row gap">
+          <button type="submit" class="btn primary">احفظ واختبر</button>
+          <label class="toggle"><input type="checkbox" id="kShow"> إظهار المفاتيح</label>
+        </div>
+        <p class="small" id="keysMsg" aria-live="polite"></p>
+      </form>
+      <p class="muted small">عند التعرّف الذكي تُرسل صورة الصفحة إلى Google لقراءتها. أما القصائد الموجودة في الفهرس فتُقرأ على هاتفك دون إرسال شيء.</p>
+    </div>
+
+    <div class="card">
+      <h3 class="card-t">المظهر</h3>
+      <div class="seg" role="radiogroup" aria-label="المظهر" id="themeSeg">
+        <button type="button" role="radio" data-v="auto">تلقائي</button>
+        <button type="button" role="radio" data-v="dark">ليلي</button>
+        <button type="button" role="radio" data-v="light">نهاري</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h3 class="card-t">إضافاتي على هذا الهاتف</h3>
+      <p class="muted small" id="mineInfo"></p>
+      <div class="row gap">
+        <button type="button" class="btn" id="exportBtn">شارك إضافاتي مع مشرف الفهرس</button>
+      </div>
+      <p class="small muted" id="exportMsg" aria-live="polite"></p>
       <label class="vh" for="exportBox">نص الإضافات</label>
       <textarea id="exportBox" rows="4" readonly hidden dir="ltr"></textarea>
-    </details>
-  </section>
+    </div>
 
-  <footer class="small muted">تُشغَّل التسجيلات من مصادرها (شبكة رافد، يوتيوب وغيرها) داخل التطبيق. قراءة الصفحة تتم على هاتفك ولا تُرسل صورتك إلى أي خادم.</footer>
-</div>
+    <div class="card">
+      <h3 class="card-t">عن التطبيق</h3>
+      <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
+      <p class="muted small">الإصدار ٢</p>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="الأقسام">
+  <a href="#scan" data-tab="scan">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M7 12h10"/></svg>
+    <span>امسح</span>
+  </a>
+  <a href="#index" data-tab="index">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 6.5C10 5 7 4.5 3.5 5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5V5C17 4.5 14 5 12 6.5zM12 6.5v13"/></svg>
+    <span>الفهرس</span>
+  </a>
+  <a href="#settings" data-tab="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <span>الإعدادات</span>
+  </a>
+</nav>
+
+<audio id="audio" preload="metadata"></audio>
 <script src="vendor/tesseract/tesseract.min.js"></script>
 <script src="match.js"></script>
+<script src="smart.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,389 +1,487 @@
 (() => {
 "use strict";
-const M = window.QMatch;
-const $ = (s) => document.querySelector(s);
+const M = window.QMatch, S = window.QSmart;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const abs = (p) => new URL(p, location.href).href;
-const LS_LOCAL = "qasida.localPoems.v1";
-const LS_EXTRA = "qasida.extraRecordings.v1";
-const LS_POS = "qasida.audioPos.v1";
+const LS = { local: "qasida.localPoems.v1", extra: "qasida.extraRecordings.v1", pos: "qasida.audioPos.v1", hist: "qasida.history.v1", theme: "qasida.theme" };
 
 const state = {
-  base: [], poems: [], current: null,
-  stream: null, track: null, torch: false, scanning: false, busy: false, frames: 0,
-  worker: null, workerP: null, deferredInstall: null
+  base: [], poems: [], temp: null, view: "scan", poemId: null, page: null,
+  stream: null, track: null, torch: false, scanning: false, busy: false, frames: 0, textyFrames: 0,
+  worker: null, workerP: null, ctl: null, deferredInstall: null
 };
 
 /* ---------- storage ---------- */
 function lsGet(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
 
-/* ---------- DOM helper ---------- */
+/* ---------- DOM ---------- */
 function el(tag, attrs, ...kids){
   const n = document.createElement(tag);
   if (attrs) for (const [k, v] of Object.entries(attrs)){
     if (v == null || v === false) continue;
     if (k === "class") n.className = v;
     else if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v;
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v === true ? "" : v);
   }
   for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
   return n;
 }
-const ICON = {
-  audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
-  youtube: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>'
+const IC = {
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+  note: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
+  back: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>',
+  share: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5M5 14v5h14v-5"/></svg>'
 };
-function svg(name){ const s = el("span", { "aria-hidden": "true", style: "display:inline-flex" }); s.innerHTML = ICON[name]; return s; }
+const ar = M.toArabicDigits;
+const fmtTime = (s) => { if (!isFinite(s)) return "٠:٠٠"; s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return ar((h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0")); };
+function safeUrl(u){ try { const x = new URL(String(u)); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null; } catch { return null; } }
+const ytSearchUrl = (...p) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(p.filter(Boolean).join(" "));
 
 /* ---------- index ---------- */
 async function loadIndex(){
-  try {
-    const r = await fetch("poems.json", { cache: "no-cache" });
-    const j = await r.json();
-    state.base = Array.isArray(j.poems) ? j.poems : [];
-  } catch {
-    state.base = [];
-  }
+  try { const r = await fetch("poems.json", { cache: "no-cache" }); const j = await r.json(); state.base = Array.isArray(j.poems) ? j.poems : []; }
+  catch { state.base = []; }
   rebuild();
 }
 function rebuild(){
-  const extra = lsGet(LS_EXTRA, {});
-  const local = lsGet(LS_LOCAL, []);
-  const all = state.base.map((p) => ({ ...p, recordings: [...(p.recordings || []), ...((extra[p.id]) || [])] }));
-  for (const p of local) all.push({ ...p, local: true, recordings: [...(p.recordings || []), ...((extra[p.id]) || [])] });
-  state.poems = all;
-  renderIndex();
+  const extra = lsGet(LS.extra, {}), local = lsGet(LS.local, []);
+  const join = (p, isLocal) => ({ ...p, local: isLocal, recordings: [...(p.recordings || []), ...(extra[p.id] || [])] });
+  state.poems = [...state.base.map((p) => join(p, false)), ...local.map((p) => join(p, true))];
+  renderIndex(); renderRecent(); renderMine();
 }
-const poemById = (id) => state.poems.find((p) => p.id === id);
+const poemById = (id) => (state.temp && state.temp.id === id) ? state.temp : state.poems.find((p) => p.id === id);
+const playable = (p) => (p.recordings || []).filter((r) => (r.type === "audio" && safeUrl(r.src)) || (r.type === "youtube" && /^[\w-]{11}$/.test(r.id || "")));
 
 function renderIndex(){
   const box = $("#index");
   const f = M.compact($("#q").value);
   let list = state.poems.slice().sort((a, b) => String(a.title).localeCompare(String(b.title), "ar"));
-  if (f.length >= 2) list = list.filter((p) => M.compact([p.title, p.poet, p.opening, ...(p.reciters || [])].join(" ")).includes(f));
-  $("#idxCount").textContent = M.toArabicDigits(state.poems.length) + " قصيدة";
+  if (f.length >= 2) list = list.filter((p) => M.compact([p.title, p.poet, p.opening, p.refrain, ...(p.reciters || [])].join(" ")).includes(f));
+  $("#idxCount").textContent = ar(state.poems.length) + " قصيدة";
+  $("#searchMore").hidden = true;
   if (!list.length){
-    box.replaceChildren(el("p", { class: "muted", text: state.poems.length ? "لا توجد قصيدة تطابق ما كتبت." : "تعذّر تحميل الفهرس. تحقّق من الاتصال ثم أعد فتح التطبيق." }));
+    box.replaceChildren(el("p", { class: "muted", text: state.poems.length ? "لا توجد قصيدة في الفهرس تطابق ما كتبت." : "تعذّر تحميل الفهرس. تحقّق من الاتصال ثم أعد فتح التطبيق." }));
+    if (f.length >= 3) renderSearchMore($("#q").value.trim());
     return;
   }
   box.replaceChildren(...list.map((p) => {
-    const playable = (p.recordings || []).filter((r) => r.type === "audio" || r.type === "youtube").length;
-    return el("button", { type: "button", class: "btn item", onclick: () => go(p.id) },
-      el("span", { class: "tt", text: p.title }),
-      el("span", { class: "cnt", text: playable ? M.toArabicDigits(playable) + " تسجيل" : "بلا تسجيل" }),
-      el("span", { class: "sub", text: [p.poet, (p.reciters || []).join("، "), p.local ? "أضفتها أنت" : ""].filter(Boolean).join(" · ") }));
+    const n = playable(p).length;
+    return el("button", { type: "button", class: "item", onclick: () => go("p-" + p.id) },
+      el("span", { class: "mark", "aria-hidden": "true", text: (p.title || "؟").replace(/^يا\s*/, "").trim().charAt(0) }),
+      el("span", { class: "tx" }, el("span", { class: "tt", text: p.title }), el("span", { class: "sub", text: [p.poet, (p.reciters || []).join("، ")].filter(Boolean).join(" · ") || "—" })),
+      el("span", { class: "cnt" }, el("span", { text: n ? ar(n) + " تسجيل" : "بلا تسجيل" }), p.local ? el("span", { class: "loc", text: "على هاتفك" }) : null));
   }));
+}
+function renderSearchMore(q){
+  const box = $("#searchMore"); box.hidden = false; box.replaceChildren();
+  if (S.hasYouTube()){
+    box.append(el("button", { type: "button", class: "btn primary", onclick: () => searchYouTubeFor(q) }, "ابحث عن «" + q + "» في يوتيوب داخل التطبيق"));
+  } else {
+    box.append(el("a", { class: "btn", href: ytSearchUrl(q), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب"),
+      el("p", { class: "small muted" }, "فعّل التعرّف الذكي من ", el("a", { href: "#settings" }, "الإعدادات"), " ليعمل البحث داخل التطبيق."));
+  }
+}
+
+/* ---------- history ---------- */
+function pushHistory(p){
+  if (!p || p.id === "tmp") return;
+  const h = lsGet(LS.hist, []).filter((x) => x !== p.id); h.unshift(p.id); lsSet(LS.hist, h.slice(0, 10)); renderRecent();
+}
+function renderRecent(){
+  const ids = lsGet(LS.hist, []).filter((id) => state.poems.some((p) => p.id === id));
+  $("#recentBox").hidden = !ids.length;
+  $("#recent").replaceChildren(...ids.map((id) => { const p = poemById(id); return el("button", { type: "button", class: "rc", onclick: () => go("p-" + id) }, el("b", { text: p.title }), el("span", { text: (p.reciters || [])[0] || p.poet || "" })); }));
 }
 
 /* ---------- routing ---------- */
-function go(id){ if (location.hash !== "#p-" + id) location.hash = "p-" + id; else showPoem(id, null, true); }
+function go(h){ if (location.hash === "#" + h) route(); else location.hash = h; }
 window.addEventListener("hashchange", route);
 function route(){
-  const m = location.hash.match(/^#p-([\w-]+)$/);
-  if (m && poemById(m[1])) showPoem(m[1], state.current && state.current.poemId === m[1] ? state.current.scanText : null, true);
+  const h = location.hash.replace(/^#/, "");
+  const m = h.match(/^p-([\w-]+)$/);
+  let view = "scan";
+  if (m && poemById(m[1])){ view = "poem"; renderPoem(m[1]); }
+  else if (h === "index" || h === "settings") view = h;
+  if (view !== "scan" && state.stream) stopCamera();
+  if (view !== "poem") pauseMedia();
+  for (const v of ["scan", "poem", "index", "settings"]) $("#view-" + v).hidden = v !== view;
+  const tab = view === "poem" ? null : view;
+  $$(".tabbar a").forEach((a) => { if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  if (state.view !== view) window.scrollTo({ top: 0, behavior: "auto" });
+  state.view = view;
+  if (view === "settings") fillSettings();
+  if (view === "scan") renderSmartCard();
 }
 
-/* ---------- reader (on-device OCR) ---------- */
-function showProgress(text, frac){
-  const p = $("#progress");
-  if (text == null){ p.hidden = true; return; }
-  p.hidden = false; $("#progText").textContent = text;
-  $("#bar").style.setProperty("--p", Math.round((frac || 0) * 100) + "%");
-}
+/* ---------- on-device reader ---------- */
 function getWorker(){
   if (state.worker) return Promise.resolve(state.worker);
   if (state.workerP) return state.workerP;
-  showProgress("تجهيز قارئ النص لأول مرة…", 0.05);
   state.workerP = Tesseract.createWorker("ara", 1, {
-    workerPath: abs("vendor/tesseract/worker.min.js"),
-    corePath: abs("vendor/core/"),
-    langPath: abs("vendor/lang"),
-    workerBlobURL: false,
-    gzip: true,
-    logger: (m) => {
-      if (m.status && /load|initializ/i.test(m.status) && !state.worker) showProgress("تجهيز قارئ النص لأول مرة…", m.progress || 0);
-    }
-  }).then(async (w) => {
-    try { await w.setParameters({ preserve_interword_spaces: "1" }); } catch {}
-    state.worker = w; showProgress(null); return w;
-  }).catch((e) => {
-    state.workerP = null; showProgress(null);
-    throw e;
-  });
+    workerPath: abs("vendor/tesseract/worker.min.js"), corePath: abs("vendor/core/"), langPath: abs("vendor/lang"),
+    workerBlobURL: false, gzip: true
+  }).then(async (w) => { try { await w.setParameters({ preserve_interword_spaces: "1" }); } catch {} state.worker = w; return w; })
+    .catch((e) => { state.workerP = null; throw e; });
   return state.workerP;
 }
-
-/* Grayscale + contrast stretch; long side scaled to ~1800px. Returns a canvas. */
-function prepare(src, w, h, maxSide = 1800){
+function scaleCanvas(src, w, h, maxSide){
   const s = Math.min(1, maxSide / Math.max(w, h)) || 1;
-  const cw = Math.round(w * s), ch = Math.round(h * s);
-  const c = document.createElement("canvas"); c.width = cw; c.height = ch;
-  const ctx = c.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(src, 0, 0, cw, ch);
-  const img = ctx.getImageData(0, 0, cw, ch); const d = img.data;
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4){ const g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; d[i] = g; hist[g]++; }
-  const total = cw * ch; let lo = 0, hi = 255, acc = 0;
-  for (let v = 0; v < 256; v++){ acc += hist[v]; if (acc > total * 0.02){ lo = v; break; } }
-  acc = 0; for (let v = 255; v >= 0; v--){ acc += hist[v]; if (acc > total * 0.02){ hi = v; break; } }
-  const range = Math.max(1, hi - lo);
-  for (let i = 0; i < d.length; i += 4){ let g = ((d[i] - lo) * 255 / range) | 0; g = g < 0 ? 0 : g > 255 ? 255 : g; d[i] = d[i + 1] = d[i + 2] = g; }
-  ctx.putImageData(img, 0, 0);
+  const c = document.createElement("canvas"); c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
   return c;
 }
-async function readCanvas(canvas){
+function grayCopy(src){
+  const c = document.createElement("canvas"); c.width = src.width; c.height = src.height;
+  const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0);
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data, hist = new Uint32Array(256);
+  for (let i = 0; i < d.length; i += 4){ const g = (d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114) | 0; d[i] = g; hist[g]++; }
+  const tot = c.width * c.height; let lo = 0, hi = 255, a = 0;
+  for (let v = 0; v < 256; v++){ a += hist[v]; if (a > tot * .02){ lo = v; break; } }
+  a = 0; for (let v = 255; v >= 0; v--){ a += hist[v]; if (a > tot * .02){ hi = v; break; } }
+  const r = Math.max(1, hi - lo);
+  for (let i = 0; i < d.length; i += 4){ let g = ((d[i] - lo) * 255 / r) | 0; g = g < 0 ? 0 : g > 255 ? 255 : g; d[i] = d[i + 1] = d[i + 2] = g; }
+  ctx.putImageData(img, 0, 0); return c;
+}
+async function ocr(colorCanvas){
   const w = await getWorker();
-  const { data } = await w.recognize(canvas);
+  const { data } = await w.recognize(grayCopy(colorCanvas));
   return data.text || "";
 }
+const arabicLetters = (t) => (String(t).match(/[ء-ي]/g) || []).length;
+
+/* ---------- work card ---------- */
+function work(title, sub){
+  const w = $("#work");
+  if (title == null){ w.hidden = true; return; }
+  w.hidden = false; $("#workTitle").textContent = title; $("#workSub").textContent = sub || "";
+}
+function note(text, isErr){
+  const n = $("#camNote"); n.hidden = !text; n.textContent = text || ""; n.className = "note" + (isErr ? " err" : "");
+}
+$("#cancelBtn").addEventListener("click", () => { state.ctl?.abort(); work(null); });
 
 /* ---------- camera ---------- */
 function camStatus(t){ const s = $("#camStatus"); s.hidden = !t; s.textContent = t || ""; }
 async function startCamera(){
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    $("#camNote").textContent = "هذا المتصفح لا يتيح الكاميرا داخل الصفحة. استخدم «اختر صورة»، أو افتح التطبيق في كروم أو سفاري.";
-    $("#camNote").className = "small err"; return;
-  }
+  note(null);
+  if (!navigator.mediaDevices?.getUserMedia){ note("هذا المتصفح لا يتيح الكاميرا داخل الصفحة. استخدم «اختر صورة من المعرض»، أو افتح التطبيق في كروم أو سفاري.", true); return; }
   getWorker().catch(() => {});
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
     state.stream = stream; state.track = stream.getVideoTracks()[0];
     const v = $("#video"); v.srcObject = stream; await v.play().catch(() => {});
-    $("#cam").classList.add("on");
-    $("#camBtn").hidden = true; $("#shotBtn").hidden = false; $("#stopBtn").hidden = false;
+    $("#stage").classList.add("on"); $("#camBar").hidden = false;
     let caps = {}; try { caps = state.track.getCapabilities ? state.track.getCapabilities() : {}; } catch {}
     $("#torchBtn").hidden = !caps.torch;
-    try { if (caps.focusMode && caps.focusMode.includes("continuous")) await state.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
-    $("#camNote").className = "small muted";
-    $("#camNote").textContent = "ثبّت الهاتف فوق الصفحة. سيتعرّف التطبيق عليها تلقائياً، أو اضغط «التقط الآن».";
-    state.scanning = true; state.frames = 0;
-    camStatus("جاري تجهيز القارئ…");
+    try { if (caps.focusMode?.includes("continuous")) await state.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
+    state.scanning = true; state.frames = 0; state.textyFrames = 0;
+    camStatus("ثبّت الهاتف فوق الصفحة…");
     scanLoop();
   } catch (e){
     const denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
-    $("#camNote").className = "small err";
-    $("#camNote").textContent = denied
-      ? "لم يُسمح باستخدام الكاميرا. افتح إعدادات المتصفح وامنح هذا الموقع إذن الكاميرا، أو استخدم «اختر صورة»."
-      : "تعذّر فتح الكاميرا على هذا الجهاز. استخدم «اختر صورة».";
+    note(denied ? "لم يُسمح باستخدام الكاميرا. امنح التطبيق إذن الكاميرا من إعدادات المتصفح أو الهاتف، أو استخدم «اختر صورة من المعرض»." : "تعذّر فتح الكاميرا على هذا الجهاز. استخدم «اختر صورة من المعرض».", true);
   }
 }
 function stopCamera(){
   state.scanning = false;
-  if (state.stream) state.stream.getTracks().forEach((t) => t.stop());
+  state.stream?.getTracks().forEach((t) => t.stop());
   state.stream = null; state.track = null; state.torch = false;
   $("#video").srcObject = null;
-  $("#cam").classList.remove("on", "reading");
-  $("#camBtn").hidden = false; $("#shotBtn").hidden = true; $("#stopBtn").hidden = true; $("#torchBtn").hidden = true;
+  $("#stage").classList.remove("on", "reading"); $("#camBar").hidden = true;
   $("#torchBtn").setAttribute("aria-pressed", "false");
   camStatus("");
 }
-function frameCanvas(maxSide){
-  const v = $("#video");
-  if (!v.videoWidth) return null;
-  return prepare(v, v.videoWidth, v.videoHeight, maxSide);
-}
+function grabFrame(maxSide){ const v = $("#video"); return v.videoWidth ? scaleCanvas(v, v.videoWidth, v.videoHeight, maxSide) : null; }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function scanLoop(){
   while (state.scanning){
-    if (state.busy || document.hidden){ await sleep(400); continue; }
-    const c = frameCanvas(1600);
-    if (!c){ await sleep(300); continue; }
-    state.busy = true; $("#cam").classList.add("reading");
+    if (state.busy || document.hidden){ await sleep(300); continue; }
+    const c = grabFrame(1600); if (!c){ await sleep(250); continue; }
+    state.busy = true; $("#stage").classList.add("reading");
     try {
-      const text = await readCanvas(c);
+      const text = await ocr(c);
       if (!state.scanning) break;
       state.frames++;
       const m = M.findMatches(state.poems, text, false);
-      if (m.best){
-        try { navigator.vibrate && navigator.vibrate(60); } catch {}
-        stopCamera();
-        state.current = { poemId: m.best.p.id, scanText: text };
-        go(m.best.p.id);
-        break;
-      }
-      if (m.candidates.length) camStatus("أقرأ الصفحة… قد تكون «" + m.candidates[0].p.title + "». قرّب الكاميرا من العنوان.");
-      else if (state.frames >= 3) camStatus("لم أتعرّف عليها بعد. اجعل العنوان والأبيات الأولى واضحة، أو اضغط «التقط الآن».");
-      else camStatus("أقرأ الصفحة…");
+      if (m.best){ buzz(); stopCamera(); openPoem(m.best.p, { raw: text }); break; }
+      if (arabicLetters(text) >= 60) state.textyFrames++;
+      if (S.ready() && state.textyFrames >= 2){ buzz(); const hi = grabFrame(1800) || c; stopCamera(); await smartRecognize(hi, text); break; }
+      if (m.candidates.length) camStatus("قد تكون «" + m.candidates[0].p.title + "»… قرّب الكاميرا قليلاً");
+      else if (state.frames >= 3 && !S.ready()) camStatus("ليست في الفهرس. فعّل التعرّف الذكي من الإعدادات، أو اضغط زر الالتقاط");
+      else camStatus(state.textyFrames ? "أقرأ الصفحة…" : "ثبّت الهاتف واجعل الصفحة كاملة داخل الإطار");
     } catch {
-      camStatus("تعذّر تشغيل قارئ النص. تحقّق من الاتصال في أول استخدام ثم أعد المحاولة.");
-      state.busy = false; $("#cam").classList.remove("reading");
+      camStatus("تعذّر تشغيل قارئ النص. في أول استخدام يلزم اتصال بالإنترنت.");
       await sleep(2500);
-      continue;
+    } finally {
+      state.busy = false; $("#stage").classList.remove("reading");
     }
-    state.busy = false; $("#cam").classList.remove("reading");
-    await sleep(250);
+    await sleep(200);
   }
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function snapNow(){
-  const c = frameCanvas(2000); if (!c) return;
-  stopCamera();
-  await readAndShow(c);
-}
-async function readAndShow(canvas){
-  showProgress("أقرأ الصفحة…", 0.5);
-  try {
-    const text = await readCanvas(canvas);
-    showProgress(null);
-    const m = M.findMatches(state.poems, text, false);
-    if (m.best){ state.current = { poemId: m.best.p.id, scanText: text }; go(m.best.p.id); }
-    else showNotFound({ text, candidates: m.candidates.map((c) => c.p.id) });
-  } catch {
-    showProgress(null);
-    $("#camNote").className = "small err";
-    $("#camNote").textContent = "تعذّرت قراءة الصورة. تحقّق من الاتصال في أول استخدام ثم أعد المحاولة.";
-  }
-}
+function buzz(){ try { navigator.vibrate && navigator.vibrate(60); } catch {} }
+async function snapNow(){ const c = grabFrame(1800); if (!c) return; stopCamera(); await recognize(c); }
 async function pickImage(file){
   if (!file) return;
-  stopCamera();
+  stopCamera(); note(null);
   let src, w, h;
+  try { src = await createImageBitmap(file, { imageOrientation: "from-image" }); w = src.width; h = src.height; }
+  catch {
+    try { src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); w = src.naturalWidth; h = src.naturalHeight; }
+    catch { note("تعذّر فتح هذه الصورة. جرّب صورة بصيغة JPG أو PNG.", true); return; }
+  }
+  await recognize(scaleCanvas(src, w, h, 1800));
+}
+
+/* ---------- recognition ---------- */
+async function recognize(colorCanvas){
+  work("أقرأ الصفحة…", "على هاتفك");
+  let text = "";
+  try { text = await ocr(colorCanvas); } catch { /* reader unavailable: smart mode can still work */ }
+  const m = M.findMatches(state.poems, text, false);
+  if (m.best){ work(null); openPoem(m.best.p, { raw: text }); return; }
+  if (S.ready()){ await smartRecognize(colorCanvas, text, m.candidates); return; }
+  work(null);
+  showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) });
+}
+
+const SMART_ERR = {
+  no_key: "أضف مفتاح Gemini من الإعدادات.",
+  bad_key: "مفتاح Gemini غير صحيح. راجعه في الإعدادات.",
+  quota: "انتهى الحد المجاني لهذا اليوم أو الدقيقة. أعد المحاولة بعد قليل.",
+  region: "خدمة Gemini غير متاحة من شبكتك الحالية.",
+  offline: "لا يوجد اتصال بالإنترنت. التعرّف الذكي يحتاج اتصالاً.",
+  network: "تعذّر الاتصال بالخدمة. تحقّق من الإنترنت ثم أعد المحاولة.",
+  forbidden: "المفتاح لا يملك صلاحية هذه الخدمة. راجع الإعدادات.",
+  bad_reply: "لم تكتمل قراءة الصفحة. صوّرها بإضاءة أفضل وأعد المحاولة."
+};
+async function smartRecognize(colorCanvas, raw, localCands){
+  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أتعرّف على القصيدة…", "قراءة ذكية للصفحة");
+  let info;
+  try { info = await S.identify(colorCanvas, ctl.signal); }
+  catch (e){
+    if (e.code === "cancelled") return;
+    work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true);
+    showUnknown({ raw, candidates: (localCands || []).map((c) => c.p) });
+    return;
+  }
+  if (ctl.signal.aborted) return;
+  if (!info.is_poem){ work(null); note("لم أجد قصيدة في هذه الصورة. صوّر الصفحة كاملة بإضاءة جيدة.", true); return; }
+
+  // The poem may already be in the index: match on the clean text.
+  const clean = [info.title, info.refrain, info.opening, ...info.verses.map((v) => v.join(" "))].join("\n");
+  const lm = M.findMatches(state.poems, clean, false);
+  if (lm.best){ work(null); openPoem(lm.best.p, { verses: info.verses, raw }); return; }
+
+  let vids = [], ytErr = null;
+  if (S.hasYouTube()){
+    work("أبحث عن التسجيل…", "يوتيوب");
+    try { vids = await S.findVideos(info, ctl.signal); }
+    catch (e){ if (e.code === "cancelled") return; ytErr = e.code; }
+  }
+  if (ctl.signal.aborted) return;
+  work(null);
+  const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
+  const picked = good.length ? good : vids.slice(0, 3);
+  const title = info.title || info.refrain || info.opening || (info.verses[0] || [""])[0] || "قصيدة";
+  const poem = {
+    id: "local-" + Date.now().toString(36), title: title.slice(0, 120), aliases: [], poet: info.poet, opening: info.opening, refrain: info.refrain,
+    keywords: [info.refrain, ...info.verses.slice(0, 4).map((v) => v[0])].filter((s) => s && s.length >= 8).map((s) => s.slice(0, 60)),
+    subject: info.subject, reciters: info.reciter ? [info.reciter] : [], books: info.page ? [{ book: "", page: info.page }] : [],
+    recordings: picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })),
+    smart: true, titleInferred: !info.title_printed && !!info.title, confidence: info.confidence
+  };
+  // Save to this phone so the page is recognised offline next time.
+  const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
+  openPoem(poemById(poem.id), { verses: info.verses, raw, ytErr, smartNew: true });
+}
+
+async function searchYouTubeFor(q){
+  const box = $("#searchMore"); box.replaceChildren(el("p", { class: "muted", text: "أبحث في يوتيوب…" }));
   try {
-    if (window.createImageBitmap){ src = await createImageBitmap(file, { imageOrientation: "from-image" }); w = src.width; h = src.height; }
-    else throw 0;
-  } catch {
-    src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
-    w = src.naturalWidth; h = src.naturalHeight;
-  }
-  await readAndShow(prepare(src, w, h, 2000));
+    const vids = await S.findVideos({ title: q, queries: [q], verses: [], refrain: "", opening: q, reciter: "" });
+    state.temp = { id: "tmp", title: q, poet: "", reciters: [], recordings: vids.slice(0, 8).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })), temp: true };
+    go("p-tmp");
+  } catch (e){ box.replaceChildren(el("p", { class: "err", text: SMART_ERR[e.code] || "تعذّر البحث الآن." })); }
 }
 
-/* ---------- poem card ---------- */
-function addMeta(dl, k, v){ if (v) dl.append(el("div", null, el("dt", { text: k + ":" }), el("dd", { text: v }))); }
-function headBlock(pillCls, pillText, title, dl){
-  return el("div", { style: "display:flex;flex-direction:column;gap:6px" }, el("span", { class: "pill " + pillCls, text: pillText }), el("h2", { class: "ptitle", text: title }), dl);
-}
+/* ---------- poem view ---------- */
+function openPoem(p, page){ state.page = page || null; state.pageFor = p.id; go("p-" + p.id); }
 
-function showPoem(id, scanText, scroll){
+function renderPoem(id){
   const p = poemById(id); if (!p) return;
-  stopAllMedia();
-  state.current = { poemId: id, scanText: scanText || null };
-  const box = $("#result"); box.hidden = false; box.replaceChildren();
-  const dl = el("dl", { class: "meta" });
-  addMeta(dl, "الشاعر", p.poet);
-  addMeta(dl, "الرادود", (p.reciters || []).join("، "));
-  addMeta(dl, "الموضوع", p.subject);
-  box.append(headBlock("good", scanText ? "تعرّفنا على القصيدة" : (p.local ? "أضفتها أنت" : "من الفهرس"), p.title, dl));
-  if (Array.isArray(p.books) && p.books.length)
-    box.append(el("p", { class: "small muted", text: "وردت في: " + p.books.map((b) => b.book + (b.page ? "، ص " + M.toArabicDigits(b.page) : "")).join("؛ ") }));
+  if (state.poemId !== id || !$("#view-poem").firstChild){ pauseMedia(); }
+  const page = state.pageFor === id ? state.page : null;
+  state.poemId = id;
+  pushHistory(p);
+  const v = $("#view-poem"); v.replaceChildren();
 
-  const playable = (p.recordings || []).filter((r) => (r.type === "audio" && safeUrl(r.src)) || (r.type === "youtube" && /^[\w-]{11}$/.test(r.id || "")));
-  const links = (p.recordings || []).filter((r) => r.type === "link" && safeUrl(r.url));
-  if (playable.length){
-    const tabs = el("div", { class: "tabs", role: "tablist", "aria-label": "التسجيلات" });
-    const stage = el("div", { class: "player", role: "tabpanel" });
-    let ytN = 0, auN = 0;
-    playable.forEach((r, i) => {
-      const label = r.type === "youtube" ? "يوتيوب " + M.toArabicDigits(++ytN) : "صوت " + M.toArabicDigits(++auN);
-      const t = el("button", { type: "button", class: "tab", role: "tab", "aria-selected": i === 0 ? "true" : "false",
-        onclick: () => { tabs.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", "false")); t.setAttribute("aria-selected", "true"); mount(stage, p, r); } },
-        svg(r.type === "youtube" ? "youtube" : "audio"), label);
-      tabs.append(t);
+  v.append(el("button", { type: "button", class: "back", onclick: () => (history.length > 1 ? history.back() : go("scan")) }, el("span", { html: IC.back }), "رجوع"));
+
+  const pill = page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page ? "تعرّفنا على القصيدة" : p.temp ? "نتائج يوتيوب" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
+  const by = el("p", { class: "by" });
+  if (p.poet) by.append("شعر ", el("b", { text: p.poet }));
+  const chips = el("div", { class: "chips" }, (p.reciters || []).map((r) => el("span", { text: "بصوت " + r })), p.subject ? el("span", { text: p.subject }) : null,
+    (p.books || []).filter((b) => b.page).map((b) => el("span", { text: (b.book ? b.book + " · " : "") + "ص " + ar(b.page) })));
+  const shareMsg = el("span", { class: "small", "aria-live": "polite" });
+  const acts = el("div", { class: "acts" },
+    p.temp ? el("button", { type: "button", onclick: () => saveTemp() }, "احفظ في الفهرس") : el("button", { type: "button", onclick: () => sharePoem(p, shareMsg) }, el("span", { html: IC.share }), "مشاركة"),
+    el("a", { href: ytSearchUrl(p.title, (p.reciters || [])[0]), target: "_blank", rel: "noopener" }, "أداءات أخرى"), shareMsg);
+  v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips, acts));
+
+  const recs = playable(p);
+  if (recs.length){
+    const stage = el("div", { class: "player-stage" });
+    const list = el("div", { class: "recs" });
+    let yn = 0, an = 0;
+    recs.forEach((r, i) => {
+      const label = r.type === "youtube" ? (r.note || "مقطع يوتيوب " + ar(++yn)) : ("تسجيل صوتي " + ar(++an) + (r.source ? " · " + r.source : ""));
+      const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: IC.note });
+      const tag = r.match === "good" ? el("span", { class: "tag", text: "مطابق" }) : r.match === "maybe" ? el("span", { class: "tag maybe", text: "محتمل" }) : el("span");
+      const b = el("button", { type: "button", class: "rec", "aria-current": i === 0 ? "true" : "false", onclick: () => { $$(".rec", list).forEach((x) => x.setAttribute("aria-current", "false")); b.setAttribute("aria-current", "true"); mount(stage, p, r, true); } },
+        th, el("span", { class: "tx" }, el("b", { text: label }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : "", r.type === "audio" && r.note ? r.note : ""].filter(Boolean).join(" · ") })), tag);
+      list.append(b);
     });
-    box.append(el("div", { class: "group", style: "display:flex;flex-direction:column;gap:8px" }, el("h3", { text: "استمع وشاهد" }), tabs, stage));
-    mount(stage, p, playable[0]);
+    const card = el("div", { class: "card" }, stage);
+    if (recs.length > 1) card.append(el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), list);
+    v.append(card);
+    mount(stage, p, recs[0], false);
   } else {
-    box.append(el("p", { class: "muted", text: "لا يوجد تسجيل قابل للتشغيل لهذه القصيدة بعد. أضف رابط يوتيوب أو ملف صوتي من الأسفل." }));
+    const c = el("div", { class: "card" }, el("h3", { class: "card-t", text: "لا يوجد تسجيل بعد" }));
+    if (page && page.ytErr === "quota") c.append(el("p", { class: "muted small", text: "انتهى حد بحث يوتيوب المجاني لليوم. يمكنك البحث يدوياً ثم لصق الرابط أدناه." }));
+    else if (page && page.smartNew && !S.hasYouTube()) c.append(el("p", { class: "muted small" }, "أضف مفتاح YouTube من ", el("a", { href: "#settings" }, "الإعدادات"), " ليبحث التطبيق عن التسجيل ويشغّله هنا تلقائياً."));
+    else c.append(el("p", { class: "muted small", text: "ابحث عن القصيدة في يوتيوب، ثم الصق رابطها في «أضف تسجيلاً» ليعمل هنا." }));
+    c.append(el("div", { class: "row gap" }, el("a", { class: "btn", href: ytSearchUrl(p.title, p.poet), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب")));
+    v.append(c);
   }
-  if (links.length){
-    box.append(el("div", { style: "display:flex;flex-direction:column;gap:6px" }, el("h3", { text: "مصادر أخرى" }),
-      el("div", { class: "ext" }, links.map((r) => el("a", { class: "btn", href: safeUrl(r.url), target: "_blank", rel: "noopener" }, r.source + (r.note ? " · " + r.note : ""))))));
+
+  const links = (p.recordings || []).filter((r) => r.type === "link" && safeUrl(r.url));
+  if (links.length) v.append(el("div", { class: "card" }, el("h3", { class: "sec", text: "مصادر أخرى" }),
+    el("div", { class: "ext" }, links.map((r) => el("a", { href: safeUrl(r.url), target: "_blank", rel: "noopener" }, r.source + (r.note ? " · " + r.note : ""))))));
+
+  const verses = (page && page.verses && page.verses.length) ? page.verses : null;
+  if (verses){
+    const box = el("div", { class: "verses" });
+    for (const [a, b] of verses){
+      if (/^\s*[*٭✱❋]+\s*$/.test(a) && !b) { box.append(el("div", { class: "sep", text: "* * *" })); continue; }
+      box.append(b ? el("div", { class: "v" }, el("span", { text: a }), el("span", { text: b })) : el("div", { class: "v one" }, el("span", { text: a })));
+    }
+    const cm = el("span", { class: "small muted", "aria-live": "polite" });
+    v.append(el("div", { class: "card" }, el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("h3", { class: "card-t", text: "نص الصفحة" }),
+      el("button", { type: "button", class: "chip-btn", style: "color:var(--ink);border-color:var(--line)", onclick: () => copyText([p.title, ...verses.map(([a, b]) => b ? a + "    " + b : a)].join("\n"), cm) }, "نسخ")), box, cm));
+  } else if (page && page.raw && page.raw.trim()){
+    v.append(el("details", { class: "card" }, el("summary", { text: "النص كما قرأه الهاتف" }), el("pre", { class: "raw", text: page.raw.trim() }),
+      el("p", { class: "small muted", text: "قراءة آلية سريعة وقد تخطئ في بعض الكلمات." })));
   }
-  const shareMsg = el("span", { class: "small muted", "aria-live": "polite" });
-  box.append(el("div", { class: "row" },
-    el("button", { type: "button", class: "btn", onclick: () => sharePoem(p, shareMsg) }, "شارك القصيدة"),
-    el("a", { class: "btn", href: ytSearch(p.title, p.poet, (p.reciters || [])[0]), target: "_blank", rel: "noopener" }, "أداءات أخرى على يوتيوب"),
-    shareMsg));
-  if (scanText) box.append(scanDetails(scanText));
-  box.append(addForm(p, null));
-  if (scroll) box.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+
+  if (!p.temp) v.append(addForm(p));
+  if (p.local && !p.temp) v.append(el("div", { class: "row" }, el("button", { type: "button", class: "btn", onclick: () => deleteLocal(p.id) }, "احذفها من هاتفي")));
 }
 
-function mount(stage, p, r){
-  stopAllMedia();
+function mount(stage, p, r, autoplay){
+  pauseMedia();
   stage.replaceChildren();
-  const cap = el("p", { class: "cap", text: [r.reciter, r.source, r.note].filter(Boolean).join(" · ") });
   if (r.type === "youtube"){
     const holder = el("div", { class: "yt" });
-    const btn = el("button", { type: "button", "aria-label": "شغّل المقطع", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/hqdefault.jpg')", onclick: () => {
-      holder.replaceChildren(el("iframe", {
-        src: "https://www.youtube-nocookie.com/embed/" + r.id + "?autoplay=1&playsinline=1&rel=0",
-        title: p.title + " — " + (r.reciter || "يوتيوب"),
-        allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin"
-      }));
-    } }, el("span"));
-    holder.append(btn);
-    stage.append(holder, cap, el("p", { class: "small muted" }, "إن لم يعمل المقطع هنا ", el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتحه في يوتيوب"), "."));
+    const load = () => holder.replaceChildren(el("iframe", {
+      src: "https://www.youtube-nocookie.com/embed/" + r.id + "?autoplay=1&playsinline=1&rel=0&modestbranding=1",
+      title: p.title + (r.reciter ? " — " + r.reciter : ""), allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin"
+    }));
+    holder.append(el("button", { type: "button", "aria-label": "شغّل المقطع", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/hqdefault.jpg')", onclick: load },
+      el("span", { class: "play" }), el("span", { class: "cap", text: r.note || p.title })));
+    stage.append(holder, el("p", { class: "small muted" }, "إن لم يعمل المقطع هنا ", el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتحه في يوتيوب"), "."));
+    if (autoplay) load();
   } else {
-    const a = el("audio", { controls: true, preload: "metadata", src: safeUrl(r.src) });
-    const key = r.src;
-    const pos = lsGet(LS_POS, {});
-    a.addEventListener("loadedmetadata", () => { if (pos[key] && pos[key] < a.duration - 5) a.currentTime = pos[key]; }, { once: true });
-    let last = 0;
-    a.addEventListener("timeupdate", () => { if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS_POS, {}); ps[key] = Math.floor(a.currentTime); lsSet(LS_POS, ps); } });
-    a.addEventListener("play", () => {
-      if ("mediaSession" in navigator){
-        try { navigator.mediaSession.metadata = new MediaMetadata({ title: p.title, artist: r.reciter || "", album: p.poet ? "شعر " + p.poet : "", artwork: [{ src: abs("icons/icon-512.png"), sizes: "512x512", type: "image/png" }] }); } catch {}
-      }
-    });
+    const a = $("#audio");
+    const src = safeUrl(r.src);
+    if (a.getAttribute("src") !== src){ a.src = src; a.load(); }
+    const btn = el("button", { type: "button", class: "ap-btn", "aria-label": "تشغيل", html: IC.play });
+    const cur = el("span", { text: "٠:٠٠" }), dur = el("span", { text: "--:--" });
+    const seek = el("input", { type: "range", min: "0", max: "1000", value: "0", "aria-label": "موضع التشغيل" });
     const err = el("p", { class: "small err", hidden: true }, "تعذّر تشغيل الملف من مصدره الآن. ", r.page ? el("a", { href: safeUrl(r.page), target: "_blank", rel: "noopener" }, "افتح صفحته") : null);
-    a.addEventListener("error", () => { err.hidden = false; });
-    const speeds = el("div", { class: "speeds", role: "group", "aria-label": "سرعة التشغيل" });
-    [0.75, 1, 1.25, 1.5].forEach((v) => {
-      const b = el("button", { type: "button", "aria-pressed": v === 1 ? "true" : "false", onclick: () => { a.playbackRate = v; speeds.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", "false")); b.setAttribute("aria-pressed", "true"); } }, M.toArabicDigits(v) + "×");
-      speeds.append(b);
-    });
-    const big = el("button", { type: "button", class: "btn primary", onclick: () => { a.play().catch(() => { err.hidden = false; }); } }, "▶ تشغيل");
-    a.addEventListener("play", () => { big.hidden = true; });
-    stage.append(big, a, el("div", { class: "row between" }, cap, speeds), err);
+    const speeds = el("div", { class: "speeds", role: "group", "aria-label": "السرعة" });
+    [0.75, 1, 1.25, 1.5].forEach((s) => { const b = el("button", { type: "button", "aria-pressed": a.playbackRate === s ? "true" : "false", onclick: () => { a.playbackRate = s; $$("button", speeds).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); } }, ar(s) + "×"); speeds.append(b); });
+    const sync = () => {
+      btn.innerHTML = a.paused ? IC.play : IC.pause; btn.setAttribute("aria-label", a.paused ? "تشغيل" : "إيقاف مؤقت");
+      cur.textContent = fmtTime(a.currentTime); dur.textContent = isFinite(a.duration) ? fmtTime(a.duration) : "--:--";
+      if (isFinite(a.duration) && a.duration > 0 && document.activeElement !== seek) seek.value = String(Math.round(a.currentTime / a.duration * 1000));
+    };
+    btn.addEventListener("click", () => { if (a.paused){ a.play().catch(() => { err.hidden = false; }); setSession(p, r); } else a.pause(); });
+    seek.addEventListener("input", () => { if (isFinite(a.duration)) a.currentTime = seek.value / 1000 * a.duration; });
+    let last = 0;
+    a.onplay = a.onpause = a.ondurationchange = sync;
+    a.ontimeupdate = () => {
+      sync();
+      if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[src] = Math.floor(a.currentTime); lsSet(LS.pos, ps); }
+    };
+    a.onloadedmetadata = () => { const pos = lsGet(LS.pos, {})[src]; if (pos && pos < a.duration - 5) a.currentTime = pos; sync(); };
+    a.onerror = () => { err.hidden = false; };
+    stage.append(el("div", { class: "aplayer" },
+      el("div", { class: "ap-top" }, btn, el("div", { class: "ap-info" }, el("b", { text: p.title }), el("span", { text: [r.reciter, r.note, r.source].filter(Boolean).join(" · ") }))),
+      el("div", { class: "ap-seek", dir: "ltr" }, cur, seek, dur),
+      el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("span", { class: "small muted", text: "السرعة" }), speeds), err));
+    sync();
+    if (autoplay){ a.play().catch(() => {}); setSession(p, r); }
   }
 }
-function stopAllMedia(){
-  document.querySelectorAll("#result audio").forEach((a) => { try { a.pause(); } catch {} });
-  document.querySelectorAll("#result .yt iframe").forEach((f) => f.remove());
+function setSession(p, r){
+  if (!("mediaSession" in navigator)) return;
+  try { navigator.mediaSession.metadata = new MediaMetadata({ title: p.title, artist: r.reciter || "", album: p.poet ? "شعر " + p.poet : "قارئ القصائد", artwork: [{ src: abs("icons/icon-512.png"), sizes: "512x512", type: "image/png" }] }); } catch {}
+}
+function pauseMedia(){ try { $("#audio").pause(); } catch {} $$("#view-poem .yt iframe").forEach((f) => f.remove()); }
+
+function saveTemp(){
+  const t = state.temp; if (!t) return;
+  const p = { ...t, id: "local-" + Date.now().toString(36), temp: undefined, aliases: [], opening: t.title, keywords: [], books: [] };
+  delete p.temp; delete p.local;
+  const local = lsGet(LS.local, []); local.push(p); lsSet(LS.local, local); state.temp = null; rebuild(); go("p-" + p.id);
+}
+function deleteLocal(id){
+  lsSet(LS.local, lsGet(LS.local, []).filter((p) => p.id !== id));
+  const ex = lsGet(LS.extra, {}); delete ex[id]; lsSet(LS.extra, ex);
+  lsSet(LS.hist, lsGet(LS.hist, []).filter((x) => x !== id));
+  rebuild(); go("index");
+}
+async function copyText(t, msg){ try { await navigator.clipboard.writeText(t); msg.textContent = "نُسخ."; } catch { msg.textContent = "تعذّر النسخ."; } }
+async function sharePoem(p, msg){
+  const url = location.origin + location.pathname + (p.local ? "" : "#p-" + p.id);
+  const text = p.title + (p.poet ? " — شعر " + p.poet : "") + ((p.reciters || [])[0] ? " — بصوت " + p.reciters[0] : "");
+  const yt = playable(p).find((r) => r.type === "youtube");
+  const body = text + (yt ? "\nhttps://youtu.be/" + yt.id : "");
+  if (navigator.share){ try { await navigator.share({ title: p.title, text: body, url }); } catch {} return; }
+  copyText(body + "\n" + url, msg);
 }
 
-function scanDetails(text){
-  return el("details", null, el("summary", { text: "النص كما قرأه التطبيق من الصفحة" }),
-    el("pre", { class: "verses", text: text.trim() }),
-    el("p", { class: "small muted", text: "القراءة آلية وقد تخطئ في بعض الكلمات؛ المرجع هو الصفحة المطبوعة." }));
+/* ---------- unknown poem ---------- */
+function showUnknown({ raw, candidates }){
+  state.temp = null;
+  const v = $("#view-poem"); v.replaceChildren();
+  v.append(el("button", { type: "button", class: "back", onclick: () => go("scan") }, el("span", { html: IC.back }), "رجوع"));
+  const guess = M.guessTitle(raw);
+  v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: candidates.length ? "مطابقة غير مؤكدة" : "لم نتعرّف عليها بعد" }), el("h2", { text: guess || "قصيدة غير معروفة" }),
+    el("p", { class: "by", text: S.ready() ? "صوّرها مرة أخرى بإضاءة أوضح." : "هذه القصيدة ليست في الفهرس." })));
+  if (candidates.length) v.append(el("div", { class: "card" }, el("h3", { class: "card-t", text: "هل هي إحدى هذه القصائد؟" }),
+    el("div", { class: "cands" }, candidates.map((p) => el("button", { type: "button", class: "btn", onclick: () => go("p-" + p.id) }, p.title + (p.poet ? " — " + p.poet : ""))))));
+  if (!S.ready()) v.append(el("a", { class: "smart-card", href: "#settings" }, el("span", { class: "dot off" }), el("div", null, el("b", { text: "فعّل التعرّف الذكي" }), el("small", { text: "ليتعرّف التطبيق على أي قصيدة ويجد تسجيلها، حتى بلا عنوان أو اسم شاعر." })), el("span", { class: "go", text: "الإعدادات" })));
+  v.append(el("div", { class: "row gap" }, el("button", { type: "button", class: "btn primary", onclick: () => { go("scan"); startCamera(); } }, "صوّر مجدداً"),
+    el("a", { class: "btn", href: ytSearchUrl(guess), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب")));
+  if (raw && raw.trim()) v.append(el("details", { class: "card" }, el("summary", { text: "النص كما قرأه الهاتف" }), el("pre", { class: "raw", text: raw.trim() })));
+  v.append(addForm(null, guess));
+  for (const x of ["scan", "index", "settings"]) $("#view-" + x).hidden = true;
+  v.hidden = false; state.view = "poem";
+  $$(".tabbar a").forEach((a) => a.removeAttribute("aria-current"));
+  window.scrollTo({ top: 0 });
 }
 
-function showNotFound({ text, candidates }){
-  stopAllMedia();
-  state.current = { poemId: null, scanText: text };
-  if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-  const box = $("#result"); box.hidden = false; box.replaceChildren();
-  const guess = M.guessTitle(text);
-  box.append(headBlock(candidates.length ? "warn" : "none", candidates.length ? "مطابقة غير مؤكدة" : "لم نتعرّف عليها بعد", guess || "قصيدة غير معروفة", null));
-  if (candidates.length){
-    box.append(el("div", { style: "display:flex;flex-direction:column;gap:6px" }, el("h3", { text: "هل هي إحدى هذه القصائد؟" }),
-      el("div", { class: "cands" }, candidates.map((id) => { const p = poemById(id); return p ? el("button", { type: "button", class: "btn", onclick: () => go(p.id) }, p.title + (p.poet ? " — " + p.poet : "")) : null; }))));
-  }
-  box.append(el("p", { text: "هذه القصيدة ليست في الفهرس بعد. صوّرها مرة أخرى بإضاءة أوضح، أو ابحث عنها في يوتيوب ثم الصق رابطها هنا لتعمل داخل التطبيق في المرات القادمة." }));
-  box.append(el("div", { class: "row" },
-    el("a", { class: "btn", href: ytSearch(guess), target: "_blank", rel: "noopener" }, "ابحث عنها في يوتيوب"),
-    el("button", { type: "button", class: "btn", onclick: () => { $("#cam").scrollIntoView({ behavior: "smooth" }); startCamera(); } }, "صوّر مجدداً")));
-  if (text && text.trim()) box.append(scanDetails(text));
-  box.append(addForm(null, guess));
-  box.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-}
-
-function showTyped(q){
-  const m = M.findMatches(state.poems, q, true);
-  if (m.best){ go(m.best.p.id); return; }
-  const box = $("#result"); box.hidden = false; box.replaceChildren();
-  box.append(headBlock(m.candidates.length ? "warn" : "none", m.candidates.length ? "نتائج البحث" : "لا نتائج في الفهرس", q, null));
-  if (m.candidates.length) box.append(el("div", { class: "cands" }, m.candidates.map((c) => el("button", { type: "button", class: "btn", onclick: () => go(c.p.id) }, c.p.title + (c.p.poet ? " — " + c.p.poet : "")))));
-  else box.append(el("div", { class: "row" }, el("a", { class: "btn", href: ytSearch(q), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب")));
-  box.append(addForm(null, q));
-}
-
-/* ---------- adding links (saved on this phone) ---------- */
+/* ---------- add a link (saved on this phone) ---------- */
 function parseLink(url){
   const u = safeUrl(url); if (!u) return null;
-  const x = new URL(u); const h = x.hostname.replace(/^(www|m|music)\./, "");
+  const x = new URL(u), h = x.hostname.replace(/^(www|m|music)\./, "");
   let yt = null;
   if (h === "youtu.be") yt = x.pathname.slice(1, 12);
   else if (/(^|\.)youtube(-nocookie)?\.com$/.test(h)) yt = x.searchParams.get("v") || (x.pathname.match(/\/(?:shorts|embed|live|v)\/([\w-]{11})/) || [])[1] || null;
@@ -393,21 +491,20 @@ function parseLink(url){
   return { type: "link", url: u, source: names[h] || h };
 }
 function addForm(poem, guessTitle){
-  const f = el("form", { style: "display:flex;flex-direction:column;gap:10px" });
-  f.append(el("div", { class: "divider" }), el("h3", { text: poem ? "أضف تسجيلاً آخر لهذه القصيدة" : "أضف القصيدة مع رابط تسجيلها" }));
-  const row = el("div", { class: "row", style: "align-items:flex-end" });
+  const d = el("details", { class: "card" }, el("summary", { text: poem ? "أضف تسجيلاً آخر" : "أضف القصيدة مع رابط تسجيلها" }));
+  const f = el("form", { class: "stack" });
   let tIn, pIn;
   if (!poem){
     tIn = el("input", { type: "text", id: "fTitle", required: true, value: guessTitle || "" });
     pIn = el("input", { type: "text", id: "fPoet" });
-    row.append(el("label", { class: "f", for: "fTitle" }, "عنوان القصيدة", tIn), el("label", { class: "f", for: "fPoet" }, "الشاعر", pIn));
+    f.append(el("label", { class: "f", for: "fTitle" }, el("span", { text: "عنوان القصيدة" }), tIn), el("label", { class: "f", for: "fPoet" }, el("span", { text: "الشاعر" }), pIn));
   }
-  const uIn = el("input", { type: "url", id: "fUrl", required: true, placeholder: "رابط يوتيوب أو ملف mp3", dir: "ltr" });
+  const uIn = el("input", { type: "url", id: "fUrl", required: true, placeholder: "https://youtu.be/…", dir: "ltr" });
   const rIn = el("input", { type: "text", id: "fRec", value: poem ? ((poem.reciters || [])[0] || "") : "" });
   const nIn = el("input", { type: "text", id: "fNote", placeholder: "مثال: ليلة ٧ محرم ١٤٣٤ هـ" });
-  row.append(el("label", { class: "f", for: "fUrl", style: "flex-basis:100%" }, "الرابط", uIn), el("label", { class: "f", for: "fRec" }, "الرادود", rIn), el("label", { class: "f", for: "fNote" }, "المناسبة (اختياري)", nIn));
   const msg = el("p", { class: "small", "aria-live": "polite" });
-  f.append(row, el("div", { class: "row" }, el("button", { type: "submit", class: "btn" }, "احفظ"), msg));
+  f.append(el("label", { class: "f", for: "fUrl" }, el("span", { text: "رابط يوتيوب أو ملف mp3" }), uIn), el("label", { class: "f", for: "fRec" }, el("span", { text: "الرادود" }), rIn),
+    el("label", { class: "f", for: "fNote" }, el("span", { text: "المناسبة (اختياري)" }), nIn), el("div", { class: "row gap" }, el("button", { type: "submit", class: "btn primary" }, "احفظ"), msg));
   f.addEventListener("submit", (e) => {
     e.preventDefault();
     const rec = parseLink(uIn.value.trim());
@@ -415,62 +512,79 @@ function addForm(poem, guessTitle){
     rec.reciter = rIn.value.trim().slice(0, 80); rec.note = nIn.value.trim().slice(0, 120);
     let id;
     if (poem){
-      const extra = lsGet(LS_EXTRA, {}); (extra[poem.id] = extra[poem.id] || []).push(rec);
-      if (!lsSet(LS_EXTRA, extra)){ msg.className = "small err"; msg.textContent = "تعذّر الحفظ على هذا الهاتف."; return; }
+      const ex = lsGet(LS.extra, {}); (ex[poem.id] = ex[poem.id] || []).push(rec);
+      if (!lsSet(LS.extra, ex)){ msg.className = "small err"; msg.textContent = "تعذّر الحفظ على هذا الهاتف."; return; }
       id = poem.id;
     } else {
-      const title = tIn.value.trim().slice(0, 120);
-      if (!title){ msg.className = "small err"; msg.textContent = "اكتب عنوان القصيدة."; return; }
-      const local = lsGet(LS_LOCAL, []);
+      const title = tIn.value.trim().slice(0, 120); if (!title){ msg.className = "small err"; msg.textContent = "اكتب عنوان القصيدة."; return; }
       id = "local-" + Date.now().toString(36);
+      const local = lsGet(LS.local, []);
       local.push({ id, title, aliases: [], poet: pIn.value.trim().slice(0, 120), opening: "", keywords: [], subject: "", reciters: rec.reciter ? [rec.reciter] : [], books: [], recordings: [rec] });
-      if (!lsSet(LS_LOCAL, local)){ msg.className = "small err"; msg.textContent = "تعذّر الحفظ على هذا الهاتف."; return; }
+      if (!lsSet(LS.local, local)){ msg.className = "small err"; msg.textContent = "تعذّر الحفظ على هذا الهاتف."; return; }
     }
-    rebuild();
-    const scan = state.current && state.current.scanText;
-    showPoem(id, scan, false);
+    rebuild(); go("p-" + id);
   });
-  return f;
+  d.append(f);
+  return d;
 }
 
-function exportMine(){
-  const data = { localPoems: lsGet(LS_LOCAL, []), extraRecordings: lsGet(LS_EXTRA, {}) };
-  const n = data.localPoems.length + Object.values(data.extraRecordings).reduce((a, b) => a + b.length, 0);
+/* ---------- settings ---------- */
+function renderSmartCard(){
+  const c = $("#smartCard"); c.replaceChildren();
+  const on = S.ready(), yt = S.hasYouTube();
+  c.append(el("span", { class: "dot " + (on ? "on" : "off") }),
+    el("div", null, el("b", { text: on ? "التعرّف الذكي مفعّل" : "التعرّف الذكي غير مفعّل" }),
+      el("small", { text: on ? (yt ? "يتعرّف على أي قصيدة ويبحث عن تسجيلها." : "يقرأ أي قصيدة. أضف مفتاح يوتيوب ليجد تسجيلها.") : "حالياً يتعرّف على قصائد الفهرس فقط. فعّله ليتعرّف على أي قصيدة." })),
+    el("span", { class: "go", text: on ? "الإعدادات" : "فعّله" }));
+}
+function fillSettings(){
+  const k = S.keys(); $("#kGemini").value = k.gemini; $("#kYoutube").value = k.youtube;
+  let t = "auto"; try { t = localStorage.getItem(LS.theme) || "auto"; } catch {}
+  $$("#themeSeg button").forEach((b) => b.setAttribute("aria-checked", String(t === b.dataset.v)));
+}
+$("#kShow").addEventListener("change", (e) => { const t = e.target.checked ? "text" : "password"; $("#kGemini").type = t; $("#kYoutube").type = t; });
+$("#keysForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const k = { gemini: $("#kGemini").value, youtube: $("#kYoutube").value };
+  S.saveKeys(k); renderSmartCard();
+  const msg = $("#keysMsg");
+  if (!k.gemini.trim()){ msg.className = "small muted"; msg.textContent = "حُذف المفتاح. التعرّف الذكي متوقف."; return; }
+  msg.className = "small muted"; msg.textContent = "أختبر المفاتيح…";
+  const r = await S.test(S.keys());
+  const say = { ok: "يعمل", bad_key: "غير صحيح", forbidden: "لا يملك الصلاحية (فعّل الخدمة على المشروع)", quota: "تجاوز الحد المؤقت", region: "غير متاح من شبكتك", offline: "لا يوجد اتصال", network: "تعذّر الاتصال" };
+  const g = say[r.gemini] || r.gemini, y = r.youtube ? (say[r.youtube] || r.youtube) : "لم يُضف";
+  msg.className = "small " + (r.gemini === "ok" ? "ok" : "err");
+  msg.textContent = "Gemini: " + g + " · YouTube: " + y;
+});
+$$("#themeSeg button").forEach((b) => b.addEventListener("click", () => {
+  const v = b.dataset.v;
+  try { if (v === "auto") localStorage.removeItem(LS.theme); else localStorage.setItem(LS.theme, v); } catch {}
+  if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  $$("#themeSeg button").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
+}));
+function renderMine(){
+  const local = lsGet(LS.local, []), ex = lsGet(LS.extra, {});
+  const n = Object.values(ex).reduce((a, b) => a + b.length, 0);
+  $("#mineInfo").textContent = local.length || n ? ar(local.length) + " قصيدة و" + ar(n) + " تسجيل أضفتها أنت. شاركها ليضيفها المشرف إلى الفهرس العام." : "لم تضف شيئاً بعد. كل قصيدة يتعرّف عليها التعرّف الذكي تُحفظ هنا تلقائياً.";
+}
+$("#exportBtn").addEventListener("click", () => {
+  const data = { localPoems: lsGet(LS.local, []), extraRecordings: lsGet(LS.extra, {}) };
   const box = $("#exportBox"), msg = $("#exportMsg");
-  if (!n){ msg.textContent = "لم تضف شيئاً بعد."; box.hidden = true; return; }
-  const txt = JSON.stringify(data, null, 1);
-  box.value = txt; box.hidden = false;
-  if (navigator.share){ navigator.share({ title: "إضافات قارئ القصائد", text: txt }).then(() => { msg.textContent = "تمت المشاركة."; }).catch(() => {}); }
-  else if (navigator.clipboard){ navigator.clipboard.writeText(txt).then(() => { msg.textContent = "نُسخت الإضافات. أرسلها لمشرف الفهرس."; }).catch(() => { msg.textContent = "انسخ النص من المربع وأرسله."; box.select(); }); }
-}
-
-/* ---------- misc ---------- */
-function safeUrl(u){ try { const x = new URL(String(u)); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null; } catch { return null; } }
-function ytSearch(...parts){ return "https://www.youtube.com/results?search_query=" + encodeURIComponent(parts.filter(Boolean).join(" ")); }
-async function sharePoem(p, msg){
-  const url = location.origin + location.pathname + "#p-" + p.id;
-  const text = p.title + (p.poet ? " — " + p.poet : "") + ((p.reciters || [])[0] ? " — بصوت " + p.reciters[0] : "");
-  if (navigator.share){ try { await navigator.share({ title: p.title, text, url }); } catch {} return; }
-  try { await navigator.clipboard.writeText(text + "\n" + url); msg.textContent = "نُسخ الرابط."; } catch { msg.textContent = url; }
-}
+  if (!data.localPoems.length && !Object.keys(data.extraRecordings).length){ msg.textContent = "لم تضف شيئاً بعد."; return; }
+  const txt = JSON.stringify(data); box.value = txt; box.hidden = false;
+  if (navigator.share) navigator.share({ title: "إضافات قارئ القصائد", text: txt }).catch(() => {});
+  else navigator.clipboard?.writeText(txt).then(() => { msg.textContent = "نُسخت. أرسلها لمشرف الفهرس."; }).catch(() => { box.select(); });
+});
 
 /* ---------- install & offline ---------- */
 const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); state.deferredInstall = e; if (!standalone()) $("#installBtn").hidden = false; });
-$("#installBtn").addEventListener("click", async () => {
-  const e = state.deferredInstall; if (!e) return;
-  e.prompt(); try { await e.userChoice; } catch {}
-  state.deferredInstall = null; $("#installBtn").hidden = true;
-});
+$("#installBtn").addEventListener("click", async () => { const e = state.deferredInstall; if (!e) return; e.prompt(); try { await e.userChoice; } catch {} state.deferredInstall = null; $("#installBtn").hidden = true; });
 window.addEventListener("appinstalled", () => { $("#installBtn").hidden = true; });
 if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone()) $("#iosHint").hidden = false;
-
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")){
   navigator.serviceWorker.register("sw.js").then((reg) => {
-    reg.addEventListener("updatefound", () => {
-      const nw = reg.installing; if (!nw) return;
-      nw.addEventListener("statechange", () => { if (nw.state === "installed" && navigator.serviceWorker.controller) $("#updateHint").hidden = false; });
-    });
+    reg.addEventListener("updatefound", () => { const nw = reg.installing; nw && nw.addEventListener("statechange", () => { if (nw.state === "installed" && navigator.serviceWorker.controller) $("#updateHint").hidden = false; }); });
   }).catch(() => {});
 }
 $("#reloadBtn").addEventListener("click", () => location.reload());
@@ -480,16 +594,20 @@ $("#camBtn").addEventListener("click", startCamera);
 $("#stopBtn").addEventListener("click", stopCamera);
 $("#shotBtn").addEventListener("click", snapNow);
 $("#torchBtn").addEventListener("click", async () => {
-  if (!state.track) return;
-  state.torch = !state.torch;
+  if (!state.track) return; state.torch = !state.torch;
   try { await state.track.applyConstraints({ advanced: [{ torch: state.torch }] }); $("#torchBtn").setAttribute("aria-pressed", String(state.torch)); }
   catch { state.torch = false; $("#torchBtn").hidden = true; }
 });
-$("#pickIn").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; pickImage(f); });
-$("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#q").value.trim(); if (v.length >= 2) showTyped(v); });
+$$("input.pick").forEach((i) => i.addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; pickImage(f); }));
+$("#searchForm").addEventListener("submit", (e) => {
+  e.preventDefault(); const q = $("#q").value.trim(); if (q.length < 2) return;
+  const m = M.findMatches(state.poems, q, true);
+  if (m.best) go("p-" + m.best.p.id); else { renderIndex(); renderSearchMore(q); }
+});
 let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderIndex, 150); });
-$("#exportBtn").addEventListener("click", exportMine);
+$$(".tabbar a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.tab); }));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.stream) stopCamera(); });
 
+renderSmartCard();
 loadIndex().then(route);
 })();
