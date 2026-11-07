@@ -1,0 +1,51 @@
+name: فهرس صوت الشيعة
+# يجمع فهرس صوت الشيعة للنسخة الخفيفة (بدون مفاتيح)، وينشره في الفرع data.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/catalog/**", ".github/workflows/catalog.yml"]
+  schedule:
+    - cron: "23 */4 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: catalog
+  cancel-in-progress: false
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: Previous catalog
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: data
+          path: data
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Parser self-test
+        run: node tools/catalog/test-parse.mjs
+      - name: Is a run due?
+        id: due
+        run: mkdir -p data && node tools/catalog/due.mjs data
+      - name: Collect
+        if: steps.due.outputs.run == 'true'
+        env:
+          CRAWL_MINUTES: "300"
+          CRAWL_DELAY_MS: "900"
+        run: node tools/catalog/crawl.mjs data
+      - name: Publish to the data branch
+        if: steps.due.outputs.run == 'true'
+        run: |
+          cd data
+          rm -rf .git
+          git init -q -b data
+          git config user.name "qasida-catalog"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "catalog $(date -u +%F-%H%M)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
