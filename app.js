@@ -160,9 +160,13 @@ function work(title, sub){
   if (title == null){ w.hidden = true; return; }
   w.hidden = false; $("#workTitle").textContent = title; $("#workSub").textContent = sub || "";
 }
+let noteTimer = null;
 function note(text, isErr){
-  const n = $("#camNote"); n.hidden = !text; n.textContent = text || ""; n.className = "note" + (isErr ? " err" : "");
+  const n = $("#camNote"); clearTimeout(noteTimer);
+  n.hidden = !text; $("#noteText").textContent = text || ""; n.className = "note" + (isErr ? " err" : "");
+  if (text) noteTimer = setTimeout(() => { n.hidden = true; }, isErr ? 9000 : 5000);
 }
+$("#noteX").addEventListener("click", () => note(null));
 $("#cancelBtn").addEventListener("click", () => { state.ctl?.abort(); work(null); });
 
 /* ---------- camera ---------- */
@@ -332,15 +336,15 @@ const V = window.QVoice;
 async function voiceSearch(){
   note(null);
   if (!S.ready()){
-    if (V.canDictate()){ dictateInto($("#qq"), $("#quickForm .mic")); return; }
-    note("البحث بالصوت يحتاج تفعيل التعرّف الذكي من الإعدادات.", true); return;
+    if (V.canDictate()){ dictateInto(document.getElementById(state.view === "index" ? "q" : "qq"), null); return; }
+    note("البحث بالصوت يحتاج تفعيل التعرّف الذكي: أضف مفتاح Gemini من الإعدادات.", true); return;
   }
   if (!V.canRecord()){ if (V.canDictate()){ dictateInto($("#qq"), $("#quickForm .mic")); return; } note("هذا المتصفح لا يتيح التسجيل الصوتي.", true); return; }
   stopCamera(); pauseMedia();
   const sheet = $("#voiceSheet"), meter = $("#meter");
   if (!meter.children.length) for (let i = 0; i < 28; i++) meter.append(el("i"));
   const bars = [...meter.children]; const hist = new Array(bars.length).fill(0);
-  sheet.hidden = false; $("#vsTime").textContent = "٠:٠٠ / ٠:١٢";
+  sheet.hidden = false; $("#vsTime").textContent = "جاري تشغيل الميكروفون…";
   let rec;
   try {
     rec = await V.record({ maxMs: 12000,
@@ -357,6 +361,7 @@ async function voiceSearch(){
   try { clip = await rec.done; } catch { sheet.hidden = true; return; }
   sheet.hidden = true;
   if (clip.ms < 1500){ note("المقطع قصير جداً. سجّل ثلاث ثوانٍ على الأقل.", true); return; }
+  if (clip.metered && clip.peak < 0.02){ note("لم يصل أي صوت من الميكروفون. تأكد أن التطبيق مسموح له باستخدام الميكروفون، وأن الميكروفون غير مستخدم في تطبيق آخر.", true); return; }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
   work("أستمع إلى المقطع…", "تعرّف ذكي بالصوت");
   let audio;
@@ -373,14 +378,23 @@ async function dictateInto(input, btn){
   btn && btn.classList.add("on");
   const before = input.value;
   input.value = ""; input.placeholder = "تكلّم الآن…";
+  note("أستمع… تكلّم الآن بعنوان القصيدة أو بيت منها.");
   const p = V.dictate({ onInterim: (t) => { input.value = t; } });
   dictating = p;
-  let text = "";
-  try { text = await p; } catch (e){ if (e.code === "denied") note("لم يُسمح باستخدام الميكروفون.", true); }
+  let text = "", failed = null;
+  try { text = await p; } catch (e){ failed = e.code || "error"; }
   dictating = null; btn && btn.classList.remove("on");
   input.placeholder = input.id === "qq" ? "اكتب العنوان أو بيتاً من القصيدة" : "العنوان، المطلع، الشاعر أو الرادود";
   text = (text || input.value || "").trim();
-  if (!text){ input.value = before; return; }
+  if (!text){
+    input.value = before;
+    const DM = { denied: "لم يُسمح باستخدام الميكروفون. امنح الإذن من إعدادات المتصفح أو الهاتف.", "no-speech": "لم أسمع كلاماً. اضغط الميكروفون وتكلّم مباشرة.",
+      "audio-capture": "لا يوجد ميكروفون متاح، أو يستخدمه تطبيق آخر.", network: "الإملاء الصوتي يحتاج اتصالاً بالإنترنت.",
+      "service-not-allowed": "الإملاء الصوتي غير متاح داخل التطبيق المثبّت على هذا الهاتف.", timeout: "لم يستجب الإملاء الصوتي في هذا المتصفح." };
+    if (failed && failed !== "aborted") note((DM[failed] || "تعذّر الإملاء الصوتي.") + (S.ready() ? "" : " فعّل التعرّف الذكي ليعمل البحث بالصوت بطريقة أخرى."), true);
+    else if (!failed) note("لم أسمع كلاماً. اضغط الميكروفون وتكلّم مباشرة.", true);
+    return;
+  }
   input.value = text;
   if (input.id === "q") renderIndex();
   textSearch(text);
@@ -747,7 +761,9 @@ $("#quickForm").addEventListener("submit", (e) => { e.preventDefault(); $("#qq")
 $("#voiceBtn").addEventListener("click", voiceSearch);
 $$(".search .mic").forEach((b) => b.addEventListener("click", () => {
   const input = document.getElementById(b.dataset.for);
-  if (V.canDictate()) dictateInto(input, b); else voiceSearch();
+  if (S.ready() && V.canRecord()) voiceSearch();
+  else if (V.canDictate()) dictateInto(input, b);
+  else note("البحث بالصوت يحتاج تفعيل التعرّف الذكي: أضف مفتاح Gemini من الإعدادات.", true);
 }));
 $$("#modeSeg button").forEach((b) => b.addEventListener("click", () => { S.setMode(b.dataset.v); $$("#modeSeg button").forEach((x) => x.setAttribute("aria-checked", String(x === b))); }));
 let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderIndex, 150); });

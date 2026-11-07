@@ -14,7 +14,7 @@
 
   /* Start recording. Returns a controller: { stop(), cancel(), done: Promise<Blob> }.
      onLevel(0..1) is called ~20 times a second for the meter. */
-  async function record({ maxMs = 10000, onLevel, onTick } = {}) {
+  async function record({ maxMs = 10000, onLevel, onTick, autoStop = true } = {}) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !root.MediaRecorder) {
       const e = new Error("unsupported"); e.code = "unsupported"; throw e;
     }
@@ -27,22 +27,29 @@
     const chunks = [];
     rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
 
-    let ac, raf, analyser, data;
+    let ac, raf, analyser, data, peak = 0, heard = false, quietSince = 0;
+    const t0 = Date.now();
     try {
       ac = new (root.AudioContext || root.webkitAudioContext)();
+      if (ac.state === "suspended") { try { await ac.resume(); } catch {} }
       const src = ac.createMediaStreamSource(stream);
       analyser = ac.createAnalyser(); analyser.fftSize = 512; src.connect(analyser);
       data = new Uint8Array(analyser.fftSize);
       const loop = () => {
         analyser.getByteTimeDomainData(data);
         let sum = 0; for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
-        onLevel && onLevel(Math.min(1, Math.sqrt(sum / data.length) * 3.2));
+        const lv = Math.min(1, Math.sqrt(sum / data.length) * 3.2);
+        peak = Math.max(peak, lv);
+        const now = Date.now();
+        if (lv > 0.12) { heard = true; quietSince = 0; } else if (lv < 0.05) { quietSince = quietSince || now; }
+        // Stop by itself after ~1.8 s of quiet once something was heard (and at least 3 s recorded).
+        if (autoStop && heard && quietSince && now - quietSince > 1800 && now - t0 > 3000) stop();
+        onLevel && onLevel(lv);
         raf = requestAnimationFrame(loop);
       };
       loop();
     } catch {}
 
-    const t0 = Date.now();
     const tick = setInterval(() => { onTick && onTick(Date.now() - t0, maxMs); if (Date.now() - t0 >= maxMs) stop(); }, 100);
     let cancelled = false;
     const done = new Promise((resolve, reject) => {
@@ -51,7 +58,7 @@
         stream.getTracks().forEach((t) => t.stop());
         try { ac && ac.close(); } catch {}
         if (cancelled) { const e = new Error("cancelled"); e.code = "cancelled"; reject(e); return; }
-        resolve({ blob: new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" }), ms: Date.now() - t0 });
+        resolve({ blob: new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" }), ms: Date.now() - t0, peak, metered: !!analyser });
       };
     });
     rec.start(250);
@@ -106,7 +113,9 @@
       };
       r.onerror = (ev) => { if (settled) return; settled = true; const e = new Error(ev.error || "error"); e.code = ev.error === "not-allowed" ? "denied" : (ev.error || "error"); reject(e); };
       r.onend = () => { if (settled) return; settled = true; resolve(finalText.trim()); };
-      try { r.start(); } catch (err) { settled = true; reject(err); }
+      try { r.start(); } catch (err) { settled = true; reject(err); return; }
+      // Some browsers never answer inside installed apps: give up after 8 s instead of waiting silently.
+      setTimeout(() => { if (settled) return; try { r.stop(); } catch {} setTimeout(() => { if (settled) return; settled = true; const e = new Error("timeout"); e.code = finalText ? "" : "timeout"; if (finalText) resolve(finalText.trim()); else reject(e); }, 1200); }, 8000);
     });
     p.stop = () => { try { rec && rec.stop(); } catch {} };
     return p;

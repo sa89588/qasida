@@ -65,12 +65,7 @@
       </div>
     </div>
 
-    <div class="work" id="work" hidden>
-      <div class="spin" aria-hidden="true"></div>
-      <div class="work-t"><strong id="workTitle">جاري القراءة…</strong><span id="workSub"></span></div>
-      <button type="button" class="chip-btn" id="cancelBtn">إلغاء</button>
-    </div>
-    <p class="note" id="camNote" hidden></p>
+
 
     <div class="duo">
       <button type="button" class="btn big" id="voiceBtn">
@@ -193,6 +188,15 @@
     </div>
   </section>
 </main>
+
+<div class="float" id="float" aria-live="polite">
+  <div class="work" id="work" hidden>
+    <div class="spin" aria-hidden="true"></div>
+    <div class="work-t"><strong id="workTitle">جاري القراءة…</strong><span id="workSub"></span></div>
+    <button type="button" class="chip-btn" id="cancelBtn">إلغاء</button>
+  </div>
+  <p class="note" id="camNote" hidden><span id="noteText"></span><button type="button" class="note-x" id="noteX" aria-label="إغلاق">×</button></p>
+</div>
 
 <nav class="tabbar" aria-label="الأقسام">
   <a href="#scan" data-tab="scan">
