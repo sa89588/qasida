@@ -282,3 +282,20 @@ details.more > .recs{margin-top:10px}
 details.adv > .stack{margin-top:14px;gap:18px}
 details.card > summary{padding:2px 0}
 details.card[open] > summary{margin-bottom:6px}
+
+/* v8: audio list */
+.alist{display:flex;flex-direction:column;gap:10px}
+.arow{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--surface2)}
+.arow.on{border-color:var(--brass);box-shadow:inset 0 0 0 1px var(--brass)}
+.arow-top{display:flex;align-items:center;gap:12px}
+.ap-btn.sm{width:48px;height:48px}
+.ap-btn.sm svg{width:22px;height:22px}
+.arow-t{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.45}
+.arow-t b{font-weight:600}
+.arow-t span{font-size:.82rem;color:var(--muted)}
+.atime{font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.abar{display:flex;flex-direction:column;gap:10px}
+.arow.sv{padding:10px}
+.arow.sv .svframe{height:96px}
+.svmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.svmeta .chip{margin-inline-start:auto;padding:5px 10px;font-size:.8rem}
