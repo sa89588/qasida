@@ -9,7 +9,7 @@ const LS = { local: "qasida.localPoems.v1", extra: "qasida.extraRecordings.v1", 
 const state = {
   base: [], poems: [], temp: null, view: "scan", poemId: null, page: null,
   stream: null, track: null, torch: false, scanning: false, busy: false, frames: 0, textyFrames: 0,
-  worker: null, workerP: null, ctl: null, deferredInstall: null
+  worker: null, workerP: null, ctl: null, deferredInstall: null, saved: new Set()
 };
 
 /* ---------- storage ---------- */
@@ -35,6 +35,10 @@ const IC = {
   pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
   note: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>',
   back: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  save: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>',
+  check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5 9-10"/></svg>',
+  film: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>',
   share: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5M5 14v5h14v-5"/></svg>'
 };
 const ar = M.toArabicDigits;
@@ -55,7 +59,7 @@ function rebuild(){
   renderIndex(); renderRecent(); renderMine();
 }
 const poemById = (id) => (state.temp && state.temp.id === id) ? state.temp : state.poems.find((p) => p.id === id);
-const playable = (p) => (p.recordings || []).filter((r) => (r.type === "audio" && safeUrl(r.src)) || (r.type === "youtube" && /^[\w-]{11}$/.test(r.id || "")));
+const playable = (p) => (p.recordings || []).filter((r) => (r.type === "audio" && safeUrl(r.src)) || (r.type === "file" && /^file:/.test(r.key || "")) || (r.type === "youtube" && /^[\w-]{11}$/.test(r.id || "")));
 
 function renderIndex(){
   const box = $("#index");
@@ -74,7 +78,7 @@ function renderIndex(){
     return el("button", { type: "button", class: "item", onclick: () => go("p-" + p.id) },
       el("span", { class: "mark", "aria-hidden": "true", text: (p.title || "؟").replace(/^يا\s*/, "").trim().charAt(0) }),
       el("span", { class: "tx" }, el("span", { class: "tt", text: p.title }), el("span", { class: "sub", text: [p.poet, (p.reciters || []).join("، ")].filter(Boolean).join(" · ") || "—" })),
-      el("span", { class: "cnt" }, el("span", { text: n ? ar(n) + " تسجيل" : "بلا تسجيل" }), p.local ? el("span", { class: "loc", text: "على هاتفك" }) : null));
+      el("span", { class: "cnt" }, el("span", { text: n ? ar(n) + " تسجيل" : "بلا تسجيل" }), (p.recordings || []).some(isSaved) ? el("span", { class: "loc", text: "دون إنترنت ✓" }) : p.local ? el("span", { class: "loc", text: "على هاتفك" }) : null));
   }));
 }
 function renderSearchMore(q){
@@ -432,11 +436,11 @@ function renderPoem(id){
     const list = el("div", { class: "recs" });
     let yn = 0, an = 0;
     recs.forEach((r, i) => {
-      const label = r.type === "youtube" ? (r.note || "مقطع يوتيوب " + ar(++yn)) : ("تسجيل صوتي " + ar(++an) + (r.source ? " · " + r.source : ""));
-      const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: IC.note });
+      const label = r.type === "youtube" ? (r.note || "مقطع يوتيوب " + ar(++yn)) : r.type === "file" ? (r.name || "ملف من هاتفي") : ("تسجيل صوتي " + ar(++an) + (r.source ? " · " + r.source : ""));
+      const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: r.kind === "video" ? IC.film : IC.note });
       const tag = r.match === "good" ? el("span", { class: "tag", text: "مطابق" }) : r.match === "maybe" ? el("span", { class: "tag maybe", text: "محتمل" }) : el("span");
       const b = el("button", { type: "button", class: "rec", "aria-current": i === 0 ? "true" : "false", onclick: () => { $$(".rec", list).forEach((x) => x.setAttribute("aria-current", "false")); b.setAttribute("aria-current", "true"); mount(stage, p, r, true); } },
-        th, el("span", { class: "tx" }, el("b", { text: label }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : "", r.type === "audio" && r.note ? r.note : ""].filter(Boolean).join(" · ") })), tag);
+        th, el("span", { class: "tx" }, el("b", { text: label }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : r.type === "file" ? "من هاتفي" : "", r.type !== "youtube" && r.note ? r.note : "", isSaved(r) && r.type === "audio" ? "دون إنترنت ✓" : ""].filter(Boolean).join(" · ") })), tag);
       list.append(b);
     });
     const card = el("div", { class: "card" }, stage);
@@ -495,9 +499,9 @@ function mount(stage, p, r, autoplay){
   pauseMedia();
   stage.replaceChildren();
   if (r.type === "youtube") return mountYouTube(stage, p, r, autoplay);
+  if (r.type === "file" && r.kind === "video") return mountVideo(stage, p, r, autoplay);
   const a = $("#audio");
-  const src = safeUrl(r.src);
-  if (a.getAttribute("src") !== src){ a.src = src; a.load(); }
+  const src = mediaKey(r);
   const ui = playerUI(p, r);
   ui.err.append(r.page ? el("a", { href: safeUrl(r.page), target: "_blank", rel: "noopener" }, "افتح صفحته") : "");
   let last = 0;
@@ -510,8 +514,8 @@ function mount(stage, p, r, autoplay){
   a.ontimeupdate = () => { sync(); if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[src] = Math.floor(a.currentTime); lsSet(LS.pos, ps); } };
   a.onloadedmetadata = () => { const pos = lsGet(LS.pos, {})[src]; if (pos && pos < a.duration - 5) a.currentTime = pos; sync(); };
   a.onerror = () => { ui.err.hidden = false; };
-  stage.append(ui.root); sync();
-  if (autoplay){ a.play().catch(() => {}); setSession(p, r); }
+  stage.append(ui.root, mediaActions(p, r)); sync();
+  setAudioSource(a, r).then(() => { sync(); if (autoplay){ a.play().catch(() => {}); setSession(p, r); } }).catch(() => { ui.err.hidden = false; });
 }
 
 /* Shared listening controls for mp3 and YouTube. */
@@ -535,7 +539,7 @@ function playerUI(p, r){
     if (isFinite(d) && d > 0 && document.activeElement !== seek) seek.value = String(Math.round((t || 0) / d * 1000));
   };
   ui.root = el("div", { class: "aplayer" },
-    el("div", { class: "ap-top" }, back, btn, fwd, el("div", { class: "ap-info" }, el("b", { text: r.type === "youtube" && r.note ? r.note : p.title }), el("span", { text: [r.reciter, r.type === "audio" ? r.note : "", r.type === "youtube" ? "يوتيوب" : r.source].filter(Boolean).join(" · ") }))),
+    el("div", { class: "ap-top" }, back, btn, fwd, el("div", { class: "ap-info" }, el("b", { text: r.type === "youtube" && r.note ? r.note : p.title }), el("span", { text: [r.reciter, r.type !== "youtube" ? r.note : "", r.type === "youtube" ? "يوتيوب" : r.source].filter(Boolean).join(" · ") }))),
     el("div", { class: "ap-seek", dir: "ltr" }, cur, seek, dur),
     el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("span", { class: "small muted", text: "السرعة" }), speeds), err);
   return ui;
@@ -547,7 +551,7 @@ function mountYouTube(stage, p, r, autoplay){
   box.append(slot);
   const ui = playerUI(p, r);
   ui.err.append(el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتحه في يوتيوب"));
-  const wrap = el("div", { class: "listen" }, box, ui.root);
+  const wrap = el("div", { class: "listen" }, box, ui.root, mediaActions(p, r));
   stage.append(wrap);
   const fallback = () => {
     box.replaceChildren(el("iframe", { src: "https://www.youtube-nocookie.com/embed/" + r.id + "?playsinline=1&rel=0" + (autoplay ? "&autoplay=1" : ""), title: p.title,
@@ -587,6 +591,115 @@ function pauseMedia(){
   $$("#view-poem .yt iframe").forEach((f) => f.remove());
 }
 
+/* ---------- saved media (download / offline) ---------- */
+const QM = window.QMedia;
+const mediaKey = (r) => r.type === "file" ? r.key : (r.type === "audio" ? safeUrl(r.src) : null);
+async function refreshSaved(){
+  try { state.saved = new Set(await QM.keys()); } catch { state.saved = new Set(); }
+  renderIndex(); renderStorage();
+}
+const isSaved = (r) => { const k = mediaKey(r); return !!(k && state.saved && state.saved.has(k)); };
+const fileName = (p, r, blob) => {
+  const ext = ((blob && blob.type) || r.mime || "audio/mpeg").includes("video") ? "mp4" : ((blob && blob.type) || "").includes("mp4") || ((blob && blob.type) || "").includes("aac") ? "m4a" : ((blob && blob.type) || "").includes("wav") ? "wav" : "mp3";
+  const base = [p.title, r.reciter].filter(Boolean).join(" - ").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "قصيدة";
+  return r.name && r.type === "file" ? r.name : base + "." + ext;
+};
+async function saveToPhone(blob, name){
+  const file = new File([blob], name, { type: blob.type || "audio/mpeg" });
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (ios && navigator.canShare && navigator.canShare({ files: [file] })){
+    try { await navigator.share({ files: [file], title: name }); return "shared"; } catch (e){ if (e && e.name === "AbortError") return "cancel"; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return "downloaded";
+}
+let audioBlobUrl = null;
+async function setAudioSource(a, r){
+  const key = mediaKey(r);
+  const wantLocal = state.saved.has(key);
+  if (a.dataset.key === key && a.getAttribute("src") && (!wantLocal || a.src.startsWith("blob:"))) return;
+  const resumeAt = a.dataset.key === key ? a.currentTime : 0, wasPlaying = a.dataset.key === key && !a.paused;
+  let url = r.type === "audio" ? safeUrl(r.src) : null;
+  try { const item = await QM.get(key); if (item && item.blob){ if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl); audioBlobUrl = url = URL.createObjectURL(item.blob); } } catch {}
+  if (!url) throw new Error("missing");
+  a.src = url; a.dataset.key = key; a.load();
+  if (resumeAt){ a.addEventListener("loadedmetadata", () => { a.currentTime = resumeAt; if (wasPlaying) a.play().catch(() => {}); }, { once: true }); }
+}
+function mediaActions(p, r){
+  const row = el("div", { class: "mact" });
+  const msg = el("p", { class: "small muted", "aria-live": "polite" });
+  const paint = () => {
+    row.replaceChildren();
+    if (r.type === "youtube"){
+      row.append(el("button", { type: "button", class: "chip", onclick: () => {
+        msg.replaceChildren("لا يسمح يوتيوب بتنزيل مقاطعه من خارج تطبيقه. افتح المقطع في تطبيق يوتيوب واضغط «تنزيل» تحته إن كان متاحاً في حسابك، أو أضف إلى هذه القصيدة ملفاً صوتياً من هاتفك. ",
+          el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتح في يوتيوب"));
+      } }, el("span", { html: IC.down }), "تنزيل"));
+      return;
+    }
+    const saved = isSaved(r);
+    if (saved) row.append(el("span", { class: "chip ok" }, el("span", { html: IC.check }), r.type === "file" ? "ملف على هاتفك" : "محفوظ للاستماع دون إنترنت"));
+    else row.append(el("button", { type: "button", class: "chip", onclick: async (e) => {
+      const b = e.currentTarget; b.disabled = true; msg.textContent = "أحفظ التسجيل…";
+      try {
+        await QM.saveRemote(safeUrl(r.src), { title: p.title, reciter: r.reciter || "", poemId: p.id }, (got, total) => { msg.textContent = total ? "أحفظ التسجيل… " + ar(Math.round(got / total * 100)) + "٪" : "أحفظ التسجيل… " + ar((got / 1048576).toFixed(1)) + " م.ب"; });
+        msg.textContent = "حُفظ. يعمل الآن دون إنترنت."; await refreshSaved(); paint();
+        setAudioSource($("#audio"), r).catch(() => {});
+      } catch (err){
+        b.disabled = false;
+        msg.textContent = err.code === "cors" ? "هذا المصدر لا يسمح بالحفظ داخل التطبيق. استخدم «تنزيل إلى الهاتف» لحفظ الملف في هاتفك." : err.code === "offline" ? "لا يوجد اتصال بالإنترنت." : err.name === "QuotaExceededError" ? "لا توجد مساحة كافية على الهاتف." : "تعذّر الحفظ الآن. أعد المحاولة.";
+      }
+    } }, el("span", { html: IC.save }), "احفظ للاستماع دون إنترنت"));
+    row.append(el("button", { type: "button", class: "chip", onclick: async () => {
+      try {
+        let blob = null;
+        const item = await QM.get(mediaKey(r)).catch(() => null);
+        if (item && item.blob) blob = item.blob;
+        else {
+          msg.textContent = "أجهّز الملف…";
+          try { const res = await fetch(safeUrl(r.src), { mode: "cors" }); if (res.ok) blob = await res.blob(); } catch {}
+        }
+        if (blob){ const how = await saveToPhone(blob, fileName(p, r, blob)); msg.textContent = how === "cancel" ? "" : how === "shared" ? "اختر «حفظ في الملفات» لحفظه." : "بدأ التنزيل. ستجده في مجلد التنزيلات."; }
+        else { msg.replaceChildren("سيُفتح الملف في المتصفح؛ اختر «تنزيل» من قائمته. ", el("a", { href: safeUrl(r.src), target: "_blank", rel: "noopener" }, "افتح الملف")); }
+      } catch { msg.textContent = "تعذّر التنزيل."; }
+    } }, el("span", { html: IC.down }), "تنزيل إلى الهاتف"));
+    if (saved) row.append(el("button", { type: "button", class: "chip", onclick: async () => {
+      if (r.type === "file"){
+        if (!confirmInline(msg, "سيُحذف الملف وتسجيله من هذه القصيدة.", async () => { await removeFileRecording(p, r); })) return;
+        return;
+      }
+      await QM.del(mediaKey(r)).catch(() => {}); await refreshSaved(); msg.textContent = "حُذف من الهاتف."; paint();
+    } }, r.type === "file" ? "احذف الملف" : "احذف من الهاتف"));
+  };
+  paint();
+  return el("div", { class: "mwrap" }, row, msg);
+}
+function confirmInline(msg, text, onYes){
+  msg.replaceChildren(text + " ", el("button", { type: "button", class: "linkbtn", onclick: onYes }, "تأكيد الحذف"));
+  return false;
+}
+async function removeFileRecording(p, r){
+  await QM.del(r.key).catch(() => {});
+  const ex = lsGet(LS.extra, {}); if (ex[p.id]) ex[p.id] = ex[p.id].filter((x) => x.key !== r.key); lsSet(LS.extra, ex);
+  const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id); if (it){ it.recordings = (it.recordings || []).filter((x) => x.key !== r.key); lsSet(LS.local, local); }
+  rebuild(); await refreshSaved(); state.page = null; renderPoem(p.id);
+}
+function mountVideo(stage, p, r, autoplay){
+  const v = el("video", { controls: true, playsinline: true, preload: "metadata", class: "vfile" });
+  QM.get(r.key).then((item) => {
+    if (!item || !item.blob){ stage.append(el("p", { class: "small err", text: "لم يعد الملف موجوداً على هذا الهاتف." })); return; }
+    v.src = URL.createObjectURL(item.blob); if (autoplay) v.play().catch(() => {});
+  }).catch(() => {});
+  stage.append(v, mediaActions(p, r));
+}
+async function renderStorage(){
+  const box = $("#storeInfo"); if (!box) return;
+  try { const u = await QM.usage(); box.textContent = u.count ? ar(u.count) + " تسجيل محفوظ على هاتفك · " + ar((u.bytes / 1048576).toFixed(1)) + " ميغابايت" : "لا توجد تسجيلات محفوظة بعد. افتح تسجيلاً صوتياً واضغط «احفظ للاستماع دون إنترنت»."; $("#clearStore").hidden = !u.count; }
+  catch { box.textContent = "التخزين غير متاح في هذا المتصفح."; }
+}
+
 function saveTemp(){
   const t = state.temp; if (!t) return;
   const p = { ...t, id: "local-" + Date.now().toString(36), temp: undefined, aliases: [], opening: t.title, keywords: [], books: [] };
@@ -594,6 +707,7 @@ function saveTemp(){
   const local = lsGet(LS.local, []); local.push(p); lsSet(LS.local, local); state.temp = null; rebuild(); go("p-" + p.id);
 }
 function deleteLocal(id){
+  const pd = poemById(id); if (pd) for (const r of pd.recordings || []) if (r.type === "file") QM.del(r.key).catch(() => {});
   lsSet(LS.local, lsGet(LS.local, []).filter((p) => p.id !== id));
   const ex = lsGet(LS.extra, {}); delete ex[id]; lsSet(LS.extra, ex);
   lsSet(LS.hist, lsGet(LS.hist, []).filter((x) => x !== id));
@@ -651,16 +765,31 @@ function addForm(poem, guessTitle){
     pIn = el("input", { type: "text", id: "fPoet" });
     f.append(el("label", { class: "f", for: "fTitle" }, el("span", { text: "عنوان القصيدة" }), tIn), el("label", { class: "f", for: "fPoet" }, el("span", { text: "الشاعر" }), pIn));
   }
-  const uIn = el("input", { type: "url", id: "fUrl", required: true, placeholder: "https://youtu.be/…", dir: "ltr" });
+  const uIn = el("input", { type: "url", id: "fUrl", placeholder: "https://youtu.be/…", dir: "ltr" });
+  const fIn = el("input", { type: "file", id: "fFile", accept: "audio/*,video/*", class: "vh" });
+  const fName = el("span", { class: "small muted", text: "" });
+  fIn.addEventListener("change", () => { const f = fIn.files && fIn.files[0]; fName.textContent = f ? f.name + " · " + ar((f.size / 1048576).toFixed(1)) + " م.ب" : ""; });
   const rIn = el("input", { type: "text", id: "fRec", value: poem ? ((poem.reciters || [])[0] || "") : "" });
   const nIn = el("input", { type: "text", id: "fNote", placeholder: "مثال: ليلة ٧ محرم ١٤٣٤ هـ" });
   const msg = el("p", { class: "small", "aria-live": "polite" });
-  f.append(el("label", { class: "f", for: "fUrl" }, el("span", { text: "رابط يوتيوب أو ملف mp3" }), uIn), el("label", { class: "f", for: "fRec" }, el("span", { text: "الرادود" }), rIn),
+  f.append(el("label", { class: "f", for: "fUrl" }, el("span", { text: "رابط يوتيوب أو ملف mp3" }), uIn),
+    el("div", { class: "row gap" }, el("label", { class: "btn", for: "fFile" }, el("span", { html: IC.note }), "أو اختر ملفاً صوتياً أو فيديو من هاتفك", fIn), fName),
+    el("label", { class: "f", for: "fRec" }, el("span", { text: "الرادود" }), rIn),
     el("label", { class: "f", for: "fNote" }, el("span", { text: "المناسبة (اختياري)" }), nIn), el("div", { class: "row gap" }, el("button", { type: "submit", class: "btn primary" }, "احفظ"), msg));
-  f.addEventListener("submit", (e) => {
+  f.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const rec = parseLink(uIn.value.trim());
-    if (!rec){ msg.className = "small err"; msg.textContent = "الرابط غير صالح. الصق رابطاً يبدأ بـ https://"; return; }
+    const file = fIn.files && fIn.files[0];
+    let rec;
+    if (file){
+      const key = "file:" + Date.now().toString(36);
+      msg.className = "small muted"; msg.textContent = "أحفظ الملف على هاتفك…";
+      try { await QM.put(key, file, { name: file.name, title: poem ? poem.title : "" }); try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {} }
+      catch (err){ msg.className = "small err"; msg.textContent = err && err.name === "QuotaExceededError" ? "لا توجد مساحة كافية على الهاتف." : "تعذّر حفظ الملف."; return; }
+      rec = { type: "file", key, kind: (file.type || "").startsWith("video") ? "video" : "audio", mime: file.type, name: file.name.slice(0, 120), source: "من هاتفي" };
+    } else {
+      rec = parseLink(uIn.value.trim());
+      if (!rec){ msg.className = "small err"; msg.textContent = "الصق رابطاً يبدأ بـ https:// أو اختر ملفاً من هاتفك."; return; }
+    }
     rec.reciter = rIn.value.trim().slice(0, 80); rec.note = nIn.value.trim().slice(0, 120);
     let id;
     if (poem){
@@ -674,7 +803,7 @@ function addForm(poem, guessTitle){
       local.push({ id, title, aliases: [], poet: pIn.value.trim().slice(0, 120), opening: "", keywords: [], subject: "", reciters: rec.reciter ? [rec.reciter] : [], books: [], recordings: [rec] });
       if (!lsSet(LS.local, local)){ msg.className = "small err"; msg.textContent = "تعذّر الحفظ على هذا الهاتف."; return; }
     }
-    rebuild(); go("p-" + id);
+    rebuild(); refreshSaved(); state.page = null; go("p-" + id);
   });
   d.append(f);
   return d;
@@ -694,6 +823,7 @@ function fillSettings(){
   let t = "auto"; try { t = localStorage.getItem(LS.theme) || "auto"; } catch {}
   $$("#themeSeg button").forEach((b) => b.setAttribute("aria-checked", String(t === b.dataset.v)));
   $$("#modeSeg button").forEach((b) => b.setAttribute("aria-checked", String(S.mode() === b.dataset.v)));
+  renderStorage();
 }
 $("#kShow").addEventListener("change", (e) => { const t = e.target.checked ? "text" : "password"; $("#kGemini").type = t; $("#kYoutube").type = t; });
 $("#keysForm").addEventListener("submit", async (e) => {
@@ -721,7 +851,9 @@ function renderMine(){
   $("#mineInfo").textContent = local.length || n ? ar(local.length) + " قصيدة و" + ar(n) + " تسجيل أضفتها أنت. شاركها ليضيفها المشرف إلى الفهرس العام." : "لم تضف شيئاً بعد. كل قصيدة يتعرّف عليها التعرّف الذكي تُحفظ هنا تلقائياً.";
 }
 $("#exportBtn").addEventListener("click", () => {
-  const data = { localPoems: lsGet(LS.local, []), extraRecordings: lsGet(LS.extra, {}) };
+  const noFiles = (list) => (list || []).filter((r) => r.type !== "file");
+  const ex0 = lsGet(LS.extra, {}); const exOut = {}; for (const k of Object.keys(ex0)){ const l = noFiles(ex0[k]); if (l.length) exOut[k] = l; }
+  const data = { localPoems: lsGet(LS.local, []).map((p) => ({ ...p, recordings: noFiles(p.recordings) })), extraRecordings: exOut };
   const box = $("#exportBox"), msg = $("#exportMsg");
   if (!data.localPoems.length && !Object.keys(data.extraRecordings).length){ msg.textContent = "لم تضف شيئاً بعد."; return; }
   const txt = JSON.stringify(data); box.value = txt; box.hidden = false;
@@ -776,6 +908,13 @@ let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTime
 $$(".tabbar a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.tab); }));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.stream) stopCamera(); });
 
+$("#clearStore").addEventListener("click", (e) => {
+  const b = e.currentTarget;
+  if (b.dataset.sure !== "1"){ b.dataset.sure = "1"; b.textContent = "اضغط مرة أخرى للتأكيد"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "احذف التسجيلات المحفوظة للاستماع دون إنترنت"; }, 4000); return; }
+  b.dataset.sure = "";
+  QM.list().then(async (items) => { for (const it of items) if (!String(it.key).startsWith("file:")) await QM.del(it.key); await refreshSaved(); b.textContent = "احذف التسجيلات المحفوظة للاستماع دون إنترنت"; });
+});
+
 renderSmartCard();
-loadIndex().then(route);
+loadIndex().then(() => { route(); refreshSaved(); });
 })();

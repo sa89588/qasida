@@ -259,3 +259,11 @@ code{font-size:.85em;background:var(--surface);padding:1px 5px;border-radius:5px
 .float .note span{flex:1}
 .note-x{font:inherit;font-size:1.3rem;line-height:1;background:none;border:0;color:var(--muted);cursor:pointer;padding:0 4px}
 .vs-hint{font-size:.85rem;color:var(--muted);min-height:1.4em}
+
+/* v5: download and offline */
+.mwrap{display:flex;flex-direction:column;gap:6px}
+.mact{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.chip:disabled{opacity:.6;cursor:progress}
+.chip.ok{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,var(--line));cursor:default}
+.vfile{width:100%;border-radius:14px;background:#000;max-height:60vh}
