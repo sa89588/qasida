@@ -60,7 +60,7 @@ function rebuild(){
 }
 const poemById = (id) => (state.temp && state.temp.id === id) ? state.temp : state.poems.find((p) => p.id === id);
 const playable = (p) => (p.recordings || []).filter((r) => (r.type === "audio" && safeUrl(r.src)) || (r.type === "file" && /^file:/.test(r.key || "")) || (r.type === "shiavoice" && /^[A-Za-z0-9]{3,12}$/.test(r.id || "")) || (r.type === "youtube" && /^[\w-]{11}$/.test(r.id || "")))
-  .map((r, i) => ({ r, i, o: { file: 0, audio: 1, shiavoice: 2, youtube: 3 }[r.type] })).sort((a, b) => (a.o - b.o) || (a.i - b.i)).map((x) => x.r);
+  .map((r, i) => ({ r, i, o: r.type === "youtube" ? 1 : 0 })).sort((a, b) => (a.o - b.o) || (a.i - b.i)).map((x) => x.r);
 
 function renderIndex(){
   const box = $("#index");
@@ -84,11 +84,11 @@ function renderIndex(){
 }
 function renderSearchMore(q){
   const box = $("#searchMore"); box.hidden = false; box.replaceChildren();
-  if (SV.available()){
-    box.append(el("button", { type: "button", class: "btn primary", onclick: () => textSearch(q) }, "ابحث عن «" + q + "» في صوت الشيعة"));
+  if (S.hasYouTube()){
+    box.append(el("button", { type: "button", class: "btn primary", onclick: () => textSearch(q) }, "ابحث عن «" + q + "» في يوتيوب"));
   } else {
-    box.append(el("a", { class: "btn", href: "https://shiavoice.com/search?q=" + encodeURIComponent(q), target: "_blank", rel: "noopener" }, "ابحث في موقع صوت الشيعة"),
-      el("p", { class: "small muted" }, "أضف مفتاح Gemini من ", el("a", { href: "#settings" }, "الإعدادات"), " ليعمل البحث داخل التطبيق."));
+    box.append(el("a", { class: "btn", href: ytSearchUrl(q), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب"),
+      el("p", { class: "small muted" }, "فعّل التعرّف الذكي من ", el("a", { href: "#settings" }, "الإعدادات"), " ليعمل البحث داخل التطبيق."));
   }
 }
 
@@ -267,12 +267,9 @@ async function recognize(colorCanvas){
   if (m.best){ ctl.abort(); work(null); openPoem(m.best.p, { raw: text }); return; }
   if (!smartP){ work(null); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
   let info;
-  // Start looking on ShiaVoice with the title read on the phone while Gemini is still reading the page.
-  const guess = M.guessTitle(text);
-  const early = SV.available() && guess.split(" ").length >= 2 ? SV.search(guess, ctl.signal).catch(() => []) : null;
   try { info = await smartP; }
   catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
-  await smartFlow(info, text, ctl, early);
+  await smartFlow(info, text, ctl);
 }
 
 const SMART_ERR = {
@@ -287,47 +284,8 @@ const SMART_ERR = {
   no_yt_key: "أضف مفتاح YouTube من الإعدادات ليبحث التطبيق عن التسجيل."
 };
 
-const SV = window.QSources;
-const svRec = (x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيعة", reciter: x.artist, note: x.title, duration: x.duration, match: x.score >= 0.75 ? "good" : "maybe" });
-const ytRec = (v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" });
-
-/* Look in YouTube and ShiaVoice at the same time; report each source as soon as it answers. */
-function cleanVideoTitle(t){
-  const parts = String(t || "").split(/\s*[|\-–—_:#(\[«»"]+\s*/).map((s) => s.replace(/[^ء-ي\s]/g, " ").replace(/\s+/g, " ").trim()).filter((s) => s.length >= 4);
-  return parts[0] || "";
-}
-function mergeFound(out){
-  const ytGood = out.yt.filter((v) => v.score >= 0.7).slice(0, 6);
-  return [...out.sv.map(svRec), ...(ytGood.length ? ytGood : out.yt.slice(0, 3)).map(ytRec)];
-}
-async function findAll(info, signal, ytOpts, early, onPart){
-  const out = { sv: [], yt: [], ytErr: null, svErr: null, cancelled: false };
-  const emit = () => { try { onPart && onPart(mergeFound(out), out); } catch {} };
-  const fail = (k) => (e) => { out[k] = e && e.code; if (e && e.code === "cancelled") out.cancelled = true; return []; };
-  const ytP = S.hasYouTube() ? S.findVideos(info, signal, ytOpts).then((v) => { out.yt = v; emit(); return v; }).catch(fail("ytErr")) : Promise.resolve([]);
-  const svP = SV.available() ? SV.findShiavoice(info, signal, early).then((x) => { out.sv = x; emit(); return x; }).catch(fail("svErr")) : Promise.resolve([]);
-  const [yt, sv] = await Promise.all([ytP, svP]);
-  // ShiaVoice only matches titles: when it found nothing, ask again with the title of the best matching video.
-  if (SV.available() && !sv.length && yt.length && yt[0].score >= 0.7 && !out.cancelled){
-    const q = cleanVideoTitle(yt[0].title);
-    if (q && M.compact(q) !== M.compact(info.title || "")){
-      try { out.sv = await SV.findShiavoice({ ...info, title: q, opening: info.opening || q }, signal); if (out.sv.length) emit(); } catch {}
-    }
-  }
-  return { recs: mergeFound(out), ...out };
-}
-const isBusyPlaying = () => !$("#audio").paused || !!document.querySelector("#view-poem .yt iframe");
-function refreshPoemLater(id){
-  if (!(state.poemId === id && state.view === "poem")) return;
-  if (!isBusyPlaying()) { renderPoem(id); return; }
-  // Do not interrupt what the person is listening to: offer the new results instead.
-  note("ظهرت تسجيلات أخرى لهذه القصيدة. ستظهر عند إيقاف التشغيل.");
-  const a = $("#audio");
-  a.addEventListener("pause", () => { if (state.poemId === id && state.view === "poem" && !document.querySelector("#view-poem .yt iframe")) renderPoem(id); }, { once: true });
-}
-
-/* After Gemini identified the poem: open it at once, then fill in the recordings as they arrive. */
-async function smartFlow(info, raw, ctl, early){
+/* After Gemini identified the poem: open it at once, then fill in the recordings. */
+async function smartFlow(info, raw, ctl){
   if (!info.is_poem){ work(null); note("لم أتعرّف على قصيدة في هذا. صوّر الصفحة كاملة أو أسمِعني مقطعاً أوضح.", true); return; }
   const clean = [info.title, info.refrain, info.opening, ...info.verses.map((v) => v.join(" "))].join("\n");
   const lm = M.findMatches(state.poems, clean, false);
@@ -343,62 +301,53 @@ async function smartFlow(info, raw, ctl, early){
   };
   const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
   work(null);
-  const any = SV.available() || S.hasYouTube();
-  const page = { verses: info.verses, raw, smartNew: true, searching: any };
+  const page = { verses: info.verses, raw, smartNew: true, searching: S.hasYouTube() };
   openPoem(poemById(id), page);
-  if (!any) return;
-  const save = (recs) => { const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id); if (it){ it.recordings = recs; lsSet(LS.local, l2); } rebuild(); };
-  const r = await findAll(info, ctl.signal, undefined, early, (recs) => { if (!recs.length) return; save(recs); refreshPoemLater(id); });
-  if (r.cancelled && !r.recs.length) return;
-  page.ytErr = r.ytErr; page.searching = false;
-  save(r.recs); refreshPoemLater(id);
+  if (!S.hasYouTube()) return;
+  let vids = [];
+  try { vids = await S.findVideos(info, ctl.signal); }
+  catch (e){ if (e.code === "cancelled") return; page.ytErr = e.code; }
+  const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
+  const picked = good.length ? good : vids.slice(0, 3);
+  const recs = picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
+  const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id); if (it){ it.recordings = recs; lsSet(LS.local, l2); }
+  rebuild();
+  page.searching = false;
+  if (state.poemId === id && state.view === "poem") renderPoem(id);
 }
 
-/* Typed or dictated search: the index first, then ShiaVoice and YouTube together; show the first answers at once. */
+/* Typed or dictated search: the index first, then one fast YouTube search. */
 async function textSearch(q){
   q = q.trim(); if (q.length < 2) return;
   const m = M.findMatches(state.poems, q, true);
   if (m.best){ openPoem(m.best.p, {}); return; }
-  if (!SV.available() && !S.hasYouTube()){
+  if (!S.hasYouTube()){
     go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
   }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
-  work("أبحث عن «" + q + "»…", "صوت الشيعة ويوتيوب");
-  state.temp = { id: "tmp", title: q, poet: "", reciters: [], temp: true, recordings: [] };
-  const page = { searching: true };
-  let opened = false;
-  const show = (recs) => {
-    if (ctl.signal.aborted || !recs.length) return;
-    state.temp.recordings = recs.slice(0, 12);
-    // Name the result after what was found, not after the words typed.
-    const best = recs.find((x) => x.type === "shiavoice" && x.match === "good") || recs.find((x) => x.type === "youtube" && x.match === "good");
-    const named = best ? (best.type === "shiavoice" ? best.note : cleanVideoTitle(best.note)) : "";
-    state.temp.title = named || q; state.temp.subject = named && M.compact(named) !== M.compact(q) ? "بحثت عن: " + q : "";
-    if (best && best.reciter && best.type === "shiavoice") state.temp.reciters = [best.reciter];
-    if (!opened){ opened = true; work(null); openPoem(state.temp, page); } else refreshPoemLater("tmp");
-  };
-  const r = await findAll({ title: q, queries: [], verses: [], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true }, null, show);
-  if (r.cancelled && !r.recs.length) return;
-  page.searching = false;
-  if (!r.recs.length){ work(null); note(r.ytErr === "quota" || r.svErr === "quota" ? SMART_ERR.quota : "لم أجد نتيجة لـ «" + q + "». جرّب العنوان أو بيتاً آخر.", true); return; }
-  show(r.recs);
-  if (opened) refreshPoemLater("tmp");
+  work("أبحث عن «" + q + "»…", "يوتيوب");
+  try {
+    const vids = await S.findVideos({ title: q, queries: [], verses: [], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true });
+    work(null);
+    if (!vids.length){ note("لم أجد نتائج لـ «" + q + "». جرّب بيتاً آخر أو اسم الرادود.", true); return; }
+    state.temp = { id: "tmp", title: q, poet: "", reciters: [], temp: true,
+      recordings: vids.slice(0, 8).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })) };
+    openPoem(state.temp, {});
+  } catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر البحث الآن.", true); }
 }
 
-/* An indexed poem: look for more recordings on ShiaVoice and keep them on this phone. */
 async function moreFromShiavoice(p, btn, msg){
   btn.disabled = true; msg.textContent = "أبحث في صوت الشيعة…";
   try {
-    const found = await SV.findShiavoice({ title: p.title, opening: p.opening, refrain: p.refrain, reciter: (p.reciters || [])[0] || "", queries: [], verses: [] });
-    const have = new Set((p.recordings || []).filter((r) => r.type === "shiavoice").map((r) => r.id));
-    const add = found.filter((x) => !have.has(x.id)).map(svRec);
-    if (!add.length){ msg.textContent = "لم أجد تسجيلات أخرى لها في صوت الشيعة."; btn.disabled = false; return; }
-    if (p.temp){ p.recordings = [...add, ...p.recordings]; }
+    const found = await QSources.findShiavoice({ title: p.title, opening: p.opening, refrain: p.refrain, reciter: (p.reciters || [])[0] || "", queries: [], verses: [] });
+    const add = found.map((x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيعة", reciter: x.artist, note: x.title, duration: x.duration }));
+    if (!add.length){ msg.textContent = "لم أجد لها تسجيلاً في صوت الشيعة."; btn.disabled = false; return; }
+    if (p.temp) p.recordings = [...add, ...p.recordings];
     else { const ex = lsGet(LS.extra, {}); ex[p.id] = [...add, ...(ex[p.id] || [])]; lsSet(LS.extra, ex); rebuild(); }
     renderPoem(p.id);
   } catch (e){
     btn.disabled = false;
-    msg.textContent = e.code === "no_source" ? "أضف خادم البحث أو مفتاح Gemini من الإعدادات." : String(e.code || "").startsWith("worker") ? "خادم البحث لا يستجيب. راجع رابطه في الإعدادات." : (SMART_ERR[e.code] || "تعذّر البحث في صوت الشيعة الآن.");
+    msg.textContent = e.code === "quota" ? "انتهى الحد المؤقت، أعد المحاولة بعد دقيقة." : "تعذّر البحث في صوت الشيعة الآن.";
   }
 }
 
@@ -492,36 +441,44 @@ function renderPoem(id){
   const shareMsg = el("span", { class: "small", "aria-live": "polite" });
   const acts = el("div", { class: "acts" },
     p.temp ? el("button", { type: "button", onclick: () => saveTemp() }, "احفظ في الفهرس") : el("button", { type: "button", onclick: () => sharePoem(p, shareMsg) }, el("span", { html: IC.share }), "مشاركة"),
-    shareMsg);
+    el("a", { href: ytSearchUrl(p.title, (p.reciters || [])[0]), target: "_blank", rel: "noopener" }, "أداءات أخرى"), shareMsg);
   v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips, acts));
 
   const recs = playable(p);
-  const audios = recs.filter((r) => r.type !== "youtube"), videos = recs.filter((r) => r.type === "youtube");
-  const searchingRow = (txt) => el("div", { class: "searching" }, el("div", { class: "spin", "aria-hidden": "true" }), el("span", { text: txt }));
-  const ac = el("div", { class: "card" }, el("h3", { class: "card-t", text: "التسجيلات الصوتية" }));
-  if (audios.length){
-    const list = el("div", { class: "alist" });
-    for (const r of audios) list.append(r.type === "shiavoice" ? shiavoiceRow(p, r) : audioRow(p, r));
-    ac.append(list);
+  if (!recs.length && page && page.searching){
+    v.append(el("div", { class: "card" }, el("div", { class: "searching" }, el("div", { class: "spin", "aria-hidden": "true" }), el("div", { class: "work-t" }, el("strong", { text: "أبحث عن التسجيل…" }), el("span", { text: "يوتيوب" })))));
+  } else if (recs.length){
+    const stage = el("div", { class: "player-stage" });
+    const list = el("div", { class: "recs" });
+    let yn = 0, an = 0;
+    recs.forEach((r, i) => {
+      const label = r.type === "youtube" ? (r.note || "مقطع يوتيوب " + ar(++yn)) : r.type === "file" ? (r.name || "ملف من هاتفي") : r.type === "shiavoice" ? (r.note || p.title) : ("تسجيل صوتي " + ar(++an) + (r.source ? " · " + r.source : ""));
+      const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: r.kind === "video" ? IC.film : IC.note });
+      const tag = r.match === "good" ? el("span", { class: "tag", text: "مطابق" }) : r.match === "maybe" ? el("span", { class: "tag maybe", text: "محتمل" }) : el("span");
+      const b = el("button", { type: "button", class: "rec", "aria-current": i === 0 ? "true" : "false", onclick: () => { $$(".rec", list).forEach((x) => x.setAttribute("aria-current", "false")); b.setAttribute("aria-current", "true"); mount(stage, p, r, false); } },
+        th, el("span", { class: "tx" }, el("b", { text: label }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : r.type === "file" ? "من هاتفي" : r.type === "shiavoice" ? "صوت الشيعة" + (r.duration ? " · " + ar(r.duration) : "") : "", r.type === "audio" && r.note ? r.note : "", isSaved(r) && r.type === "audio" ? "دون إنترنت ✓" : ""].filter(Boolean).join(" · ") })), tag);
+      list.append(b);
+    });
+    const card = el("div", { class: "card" }, stage);
+    if (recs.length > 1) card.append(el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), list);
+    v.append(card);
+    const auto = !!(page && page.autoplay); if (page) page.autoplay = false;
+    mount(stage, p, recs[0], auto);
+  } else {
+    const c = el("div", { class: "card" }, el("h3", { class: "card-t", text: "لا يوجد تسجيل بعد" }));
+    if (page && page.ytErr === "quota") c.append(el("p", { class: "muted small", text: "انتهى حد بحث يوتيوب المجاني لليوم. يمكنك البحث يدوياً ثم لصق الرابط أدناه." }));
+    else if (page && page.smartNew && !S.hasYouTube()) c.append(el("p", { class: "muted small" }, "أضف مفتاح YouTube من ", el("a", { href: "#settings" }, "الإعدادات"), " ليبحث التطبيق عن التسجيل ويشغّله هنا تلقائياً."));
+    else c.append(el("p", { class: "muted small", text: "ابحث عن القصيدة في يوتيوب، ثم الصق رابطها في «أضف تسجيلاً» ليعمل هنا." }));
+    c.append(el("div", { class: "row gap" }, el("a", { class: "btn", href: ytSearchUrl(p.title, p.poet), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب")));
+    v.append(c);
   }
-  if (page && page.searching) ac.append(searchingRow(audios.length ? "أبحث عن تسجيلات أخرى…" : "أبحث في صوت الشيعة…"));
-  else if (!audios.length) ac.append(el("p", { class: "muted small", text: SV.available() ? "لم نجد لها تسجيلاً صوتياً بعد." : "أضف مفتاح Gemini من الإعدادات ليبحث التطبيق عن تسجيلها." }));
-  v.append(ac);
-  if (videos.length || (page && page.searching && S.hasYouTube())){
-    const vc = el("div", { class: "card" }, el("h3", { class: "card-t", text: "الفيديو" }));
-    const first = videos.slice(0, 3), rest = videos.slice(3);
-    if (first.length) vc.append(el("div", { class: "vlist" }, first.map((r) => videoRow(p, r))));
-    if (rest.length) vc.append(el("details", { class: "more" }, el("summary", { text: "مقاطع أخرى (" + ar(rest.length) + ")" }), el("div", { class: "vlist" }, rest.map((r) => videoRow(p, r)))));
-    if (!videos.length) vc.append(searchingRow("أبحث في يوتيوب…"));
-    v.append(vc);
-  }
-  if (SV.available() && !(p.recordings || []).some((r) => r.type === "shiavoice") && !(page && page.searching)){
+
+  if (window.QSources && QSources.available() && !(p.recordings || []).some((r) => r.type === "shiavoice") && !(page && page.searching)){
     const m2 = el("span", { class: "small muted", "aria-live": "polite" });
     const b2 = el("button", { type: "button", class: "chip", onclick: () => moreFromShiavoice(p, b2, m2) }, el("span", { html: IC.note }), "ابحث عن تسجيلاتها في صوت الشيعة");
     v.append(el("div", { class: "row gap" }, b2, m2));
   }
-  const links = (p.recordings || []).filter((r) => r.type === "link" && safeUrl(r.url))
-;
+  const links = (p.recordings || []).filter((r) => r.type === "link" && safeUrl(r.url));
   if (links.length) v.append(el("div", { class: "card" }, el("h3", { class: "sec", text: "مصادر أخرى" }),
     el("div", { class: "ext" }, links.map((r) => el("a", { href: safeUrl(r.url), target: "_blank", rel: "noopener" }, r.source + (r.note ? " · " + r.note : ""))))));
 
@@ -533,8 +490,8 @@ function renderPoem(id){
       box.append(b ? el("div", { class: "v" }, el("span", { text: a }), el("span", { text: b })) : el("div", { class: "v one" }, el("span", { text: a })));
     }
     const cm = el("span", { class: "small muted", "aria-live": "polite" });
-    v.append(el("details", { class: "card" }, el("summary", { text: "نص القصيدة" }), box,
-      el("div", { class: "row gap" }, el("button", { type: "button", class: "chip", onclick: () => copyText([p.title, ...verses.map(([a, b]) => b ? a + "    " + b : a)].join("\n"), cm) }, "نسخ النص"), cm)));
+    v.append(el("div", { class: "card" }, el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("h3", { class: "card-t", text: "نص الصفحة" }),
+      el("button", { type: "button", class: "chip-btn", style: "color:var(--ink);border-color:var(--line)", onclick: () => copyText([p.title, ...verses.map(([a, b]) => b ? a + "    " + b : a)].join("\n"), cm) }, "نسخ")), box, cm));
   } else if (page && page.raw && page.raw.trim()){
     v.append(el("details", { class: "card" }, el("summary", { text: "النص كما قرأه الهاتف" }), el("pre", { class: "raw", text: page.raw.trim() }),
       el("p", { class: "small muted", text: "قراءة آلية سريعة وقد تخطئ في بعض الكلمات." })));
@@ -542,90 +499,6 @@ function renderPoem(id){
 
   if (!p.temp) v.append(addForm(p));
   if (p.local && !p.temp) v.append(el("div", { class: "row" }, el("button", { type: "button", class: "btn", onclick: () => deleteLocal(p.id) }, "احذفها من هاتفي")));
-}
-
-/* ---------- audio list: each recording with its own play button; nothing starts by itself ---------- */
-let activeRow = null;
-function audioRow(p, r){
-  const a = $("#audio");
-  const key = mediaKey(r);
-  const btn = el("button", { type: "button", class: "ap-btn sm", "aria-label": "تشغيل", html: IC.play });
-  const title = r.type === "file" ? (r.name || p.title) : p.title;
-  const meta = [r.reciter, r.type === "file" ? "من هاتفي" : r.source, r.note].filter(Boolean).join(" · ");
-  const time = el("span", { class: "atime", text: r.duration ? ar(r.duration) : "" });
-  const seek = el("input", { type: "range", min: "0", max: "1000", value: "0", "aria-label": "موضع التشغيل", dir: "ltr" });
-  const cur = el("span", { text: "٠:٠٠" });
-  const speeds = el("div", { class: "speeds", role: "group", "aria-label": "السرعة" });
-  [1, 1.25, 1.5].forEach((s) => { const b = el("button", { type: "button", "aria-pressed": s === 1 ? "true" : "false", onclick: () => { a.playbackRate = s; $$("button", speeds).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); } }, ar(s) + "×"); speeds.append(b); });
-  const bar = el("div", { class: "abar", hidden: true }, el("div", { class: "ap-seek", dir: "ltr" }, cur, seek), speeds, mediaActions(p, r));
-  const err = el("p", { class: "small err", hidden: true }, "تعذّر تشغيل هذا التسجيل الآن. ", r.page ? el("a", { href: safeUrl(r.page), target: "_blank", rel: "noopener" }, "افتح صفحته") : "");
-  const row = el("div", { class: "arow" },
-    el("div", { class: "arow-top" }, btn, el("div", { class: "arow-t" }, el("b", { text: title }), meta ? el("span", { text: meta }) : null), time),
-    bar, err);
-  const ui = {
-    row, key,
-    sync(){
-      const mine = a.dataset.key === key;
-      const playing = mine && !a.paused;
-      btn.innerHTML = playing ? IC.pause : IC.play; btn.setAttribute("aria-label", playing ? "إيقاف مؤقت" : "تشغيل");
-      row.classList.toggle("on", mine);
-      bar.hidden = !mine;
-      if (mine){
-        cur.textContent = fmtTime(a.currentTime);
-        if (isFinite(a.duration) && a.duration > 0){ time.textContent = fmtTime(a.duration); if (document.activeElement !== seek) seek.value = String(Math.round(a.currentTime / a.duration * 1000)); }
-      }
-    }
-  };
-  btn.addEventListener("click", async () => {
-    if (a.dataset.key === key && !a.paused){ a.pause(); return; }
-    err.hidden = true;
-    document.querySelectorAll("#view-poem .yt").forEach((b) => { if (b._still && b.querySelector("iframe")) b._still(); });
-    if (activeRow && activeRow !== ui) { const prev = activeRow; activeRow = ui; prev.sync(); }
-    activeRow = ui;
-    try { await setAudioSource(a, r); } catch { err.hidden = false; return; }
-    const pos = lsGet(LS.pos, {})[key];
-    if (pos && a.currentTime < 1){ a.addEventListener("loadedmetadata", () => { if (pos < a.duration - 5) a.currentTime = pos; }, { once: true }); }
-    a.play().then(() => setSession(p, r)).catch(() => { err.hidden = false; });
-    ui.sync();
-  });
-  seek.addEventListener("input", () => { if (a.dataset.key === key && isFinite(a.duration)) a.currentTime = seek.value / 1000 * a.duration; });
-  row._ui = ui;
-  if (a.dataset.key === key) activeRow = ui;
-  setTimeout(() => ui.sync());
-  return row;
-}
-(function wireAudio(){
-  const a = $("#audio"); let last = 0;
-  const tick = () => { if (activeRow && activeRow.row.isConnected) activeRow.sync(); };
-  a.addEventListener("play", tick); a.addEventListener("pause", tick); a.addEventListener("durationchange", tick); a.addEventListener("ended", tick);
-  a.addEventListener("timeupdate", () => {
-    tick();
-    if (a.dataset.key && Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[a.dataset.key] = Math.floor(a.currentTime); lsSet(LS.pos, ps); }
-  });
-})();
-/* A YouTube clip: a still picture with a play button; it starts only when tapped. */
-function videoRow(p, r){
-  const box = el("div", { class: "yt" });
-  const still = () => {
-    box.replaceChildren(el("button", { type: "button", "aria-label": "شغّل المقطع", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/hqdefault.jpg')", onclick: () => {
-      try { $("#audio").pause(); } catch {}
-      document.querySelectorAll("#view-poem .yt").forEach((b) => { if (b !== box && b._still) b._still(); });
-      box.replaceChildren(el("iframe", { src: "https://www.youtube-nocookie.com/embed/" + r.id + "?autoplay=1&playsinline=1&rel=0", title: r.note || p.title,
-        allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin" }));
-    } }, el("span", { class: "play" }), el("span", { class: "cap", text: r.note || p.title })));
-  };
-  box._still = still; still();
-  const tag = r.match === "good" ? el("span", { class: "tag", text: "مطابق" }) : r.match === "maybe" ? el("span", { class: "tag maybe", text: "محتمل" }) : null;
-  return el("div", { class: "vrow" }, box,
-    el("div", { class: "svmeta" }, el("span", { class: "small muted", text: r.reciter || "يوتيوب" }), tag,
-      el("a", { class: "chip", href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتح في يوتيوب")));
-}
-function shiavoiceRow(p, r){
-  // ShiaVoice's own player: it shows the title and has its own play button.
-  return el("div", { class: "arow sv" },
-    el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", loading: "lazy", referrerpolicy: "strict-origin-when-cross-origin" }),
-    el("div", { class: "svmeta" }, el("span", { class: "svlogo", text: "صوت الشيعة" }), el("span", { class: "small muted", text: [r.reciter, r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") }),
-      el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تحميل")));
 }
 
 let ytApiP = null, ytTimer = null, ytPlayer = null;
@@ -648,7 +521,13 @@ function mount(stage, p, r, autoplay){
   stage.replaceChildren();
   if (r.type === "youtube") return mountYouTube(stage, p, r, autoplay);
   if (r.type === "file" && r.kind === "video") return mountVideo(stage, p, r, autoplay);
-  if (r.type === "shiavoice") return mountShiavoice(stage, p, r);
+  if (r.type === "shiavoice"){
+    stage.append(el("div", { class: "svcard" },
+      el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" }),
+      el("div", { class: "svmeta" }, el("span", { class: "svlogo", text: "صوت الشيعة" }), el("span", { class: "small muted", text: [r.reciter, r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") }),
+        el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تحميل"))));
+    return;
+  }
   const a = $("#audio");
   const src = mediaKey(r);
   const ui = playerUI(p, r);
@@ -781,12 +660,6 @@ function mediaActions(p, r){
   const msg = el("p", { class: "small muted", "aria-live": "polite" });
   const paint = () => {
     row.replaceChildren();
-    if (r.type === "shiavoice"){
-      row.append(el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener", onclick: () => {
-        msg.textContent = "ستُفتح صفحة المقطع في صوت الشيعة. اضغط زر التحميل فيها لحفظه في هاتفك، ثم يمكنك إضافته إلى القصيدة من «أضف تسجيلاً آخر» ← «اختر ملفاً من هاتفك» ليعمل دون إنترنت.";
-      } }, el("span", { html: IC.down }), "تحميل من صوت الشيعة"));
-      return;
-    }
     if (r.type === "youtube"){
       row.append(el("button", { type: "button", class: "chip", onclick: () => {
         msg.replaceChildren("لا يسمح يوتيوب بتنزيل مقاطعه من خارج تطبيقه. افتح المقطع في تطبيق يوتيوب واضغط «تنزيل» تحته إن كان متاحاً في حسابك، أو أضف إلى هذه القصيدة ملفاً صوتياً من هاتفك. ",
@@ -841,12 +714,6 @@ async function removeFileRecording(p, r){
   const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id); if (it){ it.recordings = (it.recordings || []).filter((x) => x.key !== r.key); lsSet(LS.local, local); }
   rebuild(); await refreshSaved(); state.page = null; renderPoem(p.id);
 }
-function mountShiavoice(stage, p, r){
-  const card = el("div", { class: "svcard" },
-    el("div", { class: "svhead" }, el("span", { class: "svlogo", text: "صوت الشيعة" }), el("b", { text: r.note || p.title }), el("span", { class: "small muted", text: [r.reciter, r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") })),
-    el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", allow: "autoplay", loading: "lazy", referrerpolicy: "strict-origin-when-cross-origin" }));
-  stage.append(card, mediaActions(p, r));
-}
 function mountVideo(stage, p, r, autoplay){
   const v = el("video", { controls: true, playsinline: true, preload: "metadata", class: "vfile" });
   QM.get(r.key).then((item) => {
@@ -896,7 +763,7 @@ function showUnknown({ raw, candidates }){
     el("div", { class: "cands" }, candidates.map((p) => el("button", { type: "button", class: "btn", onclick: () => go("p-" + p.id) }, p.title + (p.poet ? " — " + p.poet : ""))))));
   if (!S.ready()) v.append(el("a", { class: "smart-card", href: "#settings" }, el("span", { class: "dot off" }), el("div", null, el("b", { text: "فعّل التعرّف الذكي" }), el("small", { text: "ليتعرّف التطبيق على أي قصيدة ويجد تسجيلها، حتى بلا عنوان أو اسم شاعر." })), el("span", { class: "go", text: "الإعدادات" })));
   v.append(el("div", { class: "row gap" }, el("button", { type: "button", class: "btn primary", onclick: () => { go("scan"); startCamera(); } }, "صوّر مجدداً"),
-    el("a", { class: "btn", href: "https://shiavoice.com/search?q=" + encodeURIComponent(guess), target: "_blank", rel: "noopener" }, "ابحث في موقع صوت الشيعة")));
+    el("a", { class: "btn", href: ytSearchUrl(guess), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب")));
   if (raw && raw.trim()) v.append(el("details", { class: "card" }, el("summary", { text: "النص كما قرأه الهاتف" }), el("pre", { class: "raw", text: raw.trim() })));
   v.append(addForm(null, guess));
   for (const x of ["scan", "index", "settings"]) $("#view-" + x).hidden = true;
@@ -973,34 +840,32 @@ function addForm(poem, guessTitle){
 /* ---------- settings ---------- */
 function renderSmartCard(){
   const c = $("#smartCard"); c.replaceChildren();
-  const on = S.ready();
-  c.hidden = on;
+  const on = S.ready(), yt = S.hasYouTube();
   c.append(el("span", { class: "dot " + (on ? "on" : "off") }),
     el("div", null, el("b", { text: on ? "التعرّف الذكي مفعّل" : "التعرّف الذكي غير مفعّل" }),
-      el("small", { text: on ? "يتعرّف على أي قصيدة ويبحث عن تسجيلها." : "حالياً يتعرّف على قصائد الفهرس فقط. فعّله ليتعرّف على أي قصيدة ويجد صوتها." })),
+      el("small", { text: on ? (yt ? "يتعرّف على أي قصيدة ويبحث عن تسجيلها." : "يقرأ أي قصيدة. أضف مفتاح يوتيوب ليجد تسجيلها.") : "حالياً يتعرّف على قصائد الفهرس فقط. فعّله ليتعرّف على أي قصيدة." })),
     el("span", { class: "go", text: on ? "الإعدادات" : "فعّله" }));
 }
 function fillSettings(){
-  const k = S.keys(); $("#kGemini").value = k.gemini;
+  const k = S.keys(); $("#kGemini").value = k.gemini; $("#kYoutube").value = k.youtube;
   let t = "auto"; try { t = localStorage.getItem(LS.theme) || "auto"; } catch {}
   $$("#themeSeg button").forEach((b) => b.setAttribute("aria-checked", String(t === b.dataset.v)));
   $$("#modeSeg button").forEach((b) => b.setAttribute("aria-checked", String(S.mode() === b.dataset.v)));
   renderStorage();
-  $("#kWorker").value = SV.worker();
-  $("#kYoutube").value = S.keys().youtube;
 }
-$("#kShow").addEventListener("change", (e) => { $("#kGemini").type = e.target.checked ? "text" : "password"; });
+$("#kShow").addEventListener("change", (e) => { const t = e.target.checked ? "text" : "password"; $("#kGemini").type = t; $("#kYoutube").type = t; });
 $("#keysForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const k = { gemini: $("#kGemini").value, youtube: S.keys().youtube };
+  const k = { gemini: $("#kGemini").value, youtube: $("#kYoutube").value };
   S.saveKeys(k); renderSmartCard();
   const msg = $("#keysMsg");
   if (!k.gemini.trim()){ msg.className = "small muted"; msg.textContent = "حُذف المفتاح. التعرّف الذكي متوقف."; return; }
   msg.className = "small muted"; msg.textContent = "أختبر المفاتيح…";
-  const r = await S.test({ gemini: S.keys().gemini });
-  const say = { ok: "المفتاح يعمل ✓", bad_key: "المفتاح غير صحيح. انسخه مرة أخرى.", forbidden: "المفتاح لا يملك صلاحية Gemini.", quota: "تجاوز الحد المؤقت، أعد المحاولة بعد دقيقة.", region: "الخدمة غير متاحة من شبكتك.", offline: "لا يوجد اتصال بالإنترنت.", network: "تعذّر الاتصال. أعد المحاولة." };
+  const r = await S.test(S.keys());
+  const say = { ok: "يعمل", bad_key: "غير صحيح", forbidden: "لا يملك الصلاحية (فعّل الخدمة على المشروع)", quota: "تجاوز الحد المؤقت", region: "غير متاح من شبكتك", offline: "لا يوجد اتصال", network: "تعذّر الاتصال" };
+  const g = say[r.gemini] || r.gemini, y = r.youtube ? (say[r.youtube] || r.youtube) : "لم يُضف";
   msg.className = "small " + (r.gemini === "ok" ? "ok" : "err");
-  msg.textContent = say[r.gemini] || ("تعذّر الاختبار: " + r.gemini);
+  msg.textContent = "Gemini: " + g + " · YouTube: " + y;
 });
 $$("#themeSeg button").forEach((b) => b.addEventListener("click", () => {
   const v = b.dataset.v;
@@ -1071,29 +936,6 @@ let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTime
 $$(".tabbar a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.tab); }));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.stream) stopCamera(); });
 
-$("#ytForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  S.saveKeys({ gemini: S.keys().gemini, youtube: $("#kYoutube").value });
-  const msg = $("#ytMsg"); msg.className = "small muted"; msg.textContent = "أختبر…";
-  const r = await S.test({ youtube: S.keys().youtube || S.keys().gemini });
-  const say = { ok: "يوتيوب يعمل ✓", bad_key: "المفتاح غير صحيح.", forbidden: "فعّل YouTube Data API v3 على مشروع المفتاح.", quota: "انتهى حد اليوم.", offline: "لا يوجد اتصال.", network: "تعذّر الاتصال." };
-  msg.className = "small " + (r.youtube === "ok" ? "ok" : "err"); msg.textContent = say[r.youtube] || ("تعذّر الاختبار: " + r.youtube);
-});
-$("#workerForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const u = $("#kWorker").value.trim(), msg = $("#workerMsg");
-  if (u && !/^https:\/\/[^\s]+$/.test(u)){ msg.className = "small err"; msg.textContent = "الرابط يجب أن يبدأ بـ https://"; return; }
-  SV.setWorker(u);
-  if (!u){ msg.className = "small muted"; msg.textContent = "حُذف الرابط. سيُستخدم Gemini للبحث في صوت الشيعة إن كان مفعّلاً."; return; }
-  msg.className = "small muted"; msg.textContent = "أختبر الخادم…";
-  try { const n = await SV.test(); msg.className = "small ok"; msg.textContent = "يعمل: وجد " + ar(n) + " نتيجة تجريبية في صوت الشيعة."; }
-  catch { msg.className = "small err"; msg.textContent = "لا يستجيب. تأكد أنك ضغطت Deploy ونسخت الرابط كاملاً."; }
-});
-$("#copyWorker").addEventListener("click", async () => {
-  const msg = $("#workerMsg");
-  try { const code = await fetch("worker/shiavoice-worker.js", { cache: "no-cache" }).then((r) => r.text()); await navigator.clipboard.writeText(code); msg.className = "small ok"; msg.textContent = "نُسخ الكود. الصقه في Cloudflare كما في الخطوات."; }
-  catch { msg.className = "small err"; msg.textContent = "تعذّر النسخ. افتح الكود من الرابط وانسخه يدوياً."; }
-});
 $("#clearStore").addEventListener("click", (e) => {
   const b = e.currentTarget;
   if (b.dataset.sure !== "1"){ b.dataset.sure = "1"; b.textContent = "اضغط مرة أخرى للتأكيد"; setTimeout(() => { b.dataset.sure = ""; b.textContent = "احذف التسجيلات المحفوظة للاستماع دون إنترنت"; }, 4000); return; }

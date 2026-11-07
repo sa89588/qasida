@@ -22,7 +22,7 @@
   function saveKeys(k) { return ls.set(LS_KEYS, { gemini: (k.gemini || "").trim(), youtube: (k.youtube || "").trim() }); }
   const ready = () => !!keys().gemini;
   const ytKey = () => keys().youtube || keys().gemini;
-  const mode = () => ls.get(LS_MODE, "accurate");
+  const mode = () => ls.get(LS_MODE, "fast");
   const setMode = (m) => ls.set(LS_MODE, m === "accurate" ? "accurate" : "fast");
 
   class SmartError extends Error { constructor(code, msg) { super(msg || code); this.code = code; } }
@@ -100,7 +100,7 @@
     for (let i = 0; i < models.length && i < 8; i++) {
       const model = models[i];
       const gen = { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 2048 };
-      if (!noThink[model]) gen.thinkingConfig = { thinkingLevel: mode() === "fast" ? "minimal" : "low" };
+      if (!noThink[model]) gen.thinkingConfig = { thinkingLevel: "minimal" };
       const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: gen });
       try {
         const j = await fetchJSON(GEMINI + "/models/" + encodeURIComponent(model) + ":generateContent", {
