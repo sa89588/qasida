@@ -88,10 +88,10 @@
     return { inline_data: { mime_type: input.mime, data: input.b64 } };
   }
 
-  async function identify(input, signal) {
+  /* One Gemini request with the fastest working model; returns the reply parsed as JSON. */
+  async function run(parts, signal, maxTokens) {
     const key = keys().gemini;
     if (!key) throw new SmartError("no_key");
-    const parts = [mediaPart(input), { text: input.kind === "image" ? PROMPT_IMAGE : PROMPT_AUDIO }];
     const cached = ls.get(LS_MODEL, null);
     const order = mode() === "fast" ? [...FAST, ...SMART] : [...SMART, ...FAST];
     let models = [...new Set([cached && cached.key === key.slice(-6) && cached.mode === mode() ? cached.model : null, ...order].filter(Boolean))];
@@ -99,7 +99,7 @@
     let listed = false, lastErr = null;
     for (let i = 0; i < models.length && i < 8; i++) {
       const model = models[i];
-      const gen = { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 2048 };
+      const gen = { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: maxTokens || 2048 };
       if (!noThink[model]) gen.thinkingConfig = { thinkingLevel: "minimal" };
       const body = JSON.stringify({ contents: [{ role: "user", parts }], generationConfig: gen });
       try {
@@ -110,7 +110,7 @@
         const data = parseLoose(text.filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join(""));
         if (!data) { lastErr = new SmartError("bad_reply"); continue; }
         ls.set(LS_MODEL, { key: key.slice(-6), model, mode: mode() });
-        return clean(data);
+        return data;
       } catch (e) {
         lastErr = e;
         if (["bad_key", "cancelled", "offline", "region"].includes(e.code)) throw e;
@@ -121,6 +121,37 @@
       }
     }
     throw lastErr || new SmartError("failed");
+  }
+
+  async function identify(input, signal) {
+    const parts = [mediaPart(input), { text: input.kind === "image" ? PROMPT_IMAGE : PROMPT_AUDIO }];
+    return clean(await run(parts, signal));
+  }
+
+  /* From a fragment (a verse, a few words) and real YouTube results, name the original poem.
+     The results are the evidence: video titles usually carry the poem's title and reciter,
+     and descriptions often carry the verses and the poet. */
+  async function namePoem(fragment, videos, signal) {
+    const list = (videos || []).slice(0, 8).map((v, i) => (i + 1) + ") العنوان: " + v.title + " | القناة: " + v.channel + " | الوصف: " + String(v.desc || "").replace(/\s+/g, " ").slice(0, 220)).join("\n");
+    const prompt = `المستخدم يتذكر جزءاً من قصيدة حسينية (لطمية أو نعي أو قصيدة) ويريد معرفة القصيدة الأصلية:
+«${String(fragment).slice(0, 400)}»
+${list ? "وهذه نتائج بحث حقيقية في يوتيوب عن هذا الجزء:\n" + list + "\n" : ""}
+المطلوب: حدّد القصيدة الأصلية التي ينتمي إليها هذا الجزء.
+- title: العنوان المعروف للقصيدة (غالباً مطلعها أو لازمتها كما يظهر في عناوين المقاطع)، دون اسم الرادود ودون كلمات مثل «لطمية» أو «جديد» أو «حصرياً».
+- poet: الشاعر إن ذُكر في النتائج أو كنت تعرفه يقيناً، وإلا "".
+- reciter: الرادود إن ظهر في النتائج، وإلا "".
+- opening: مطلع القصيدة إن عرفته.
+- matches: أرقام النتائج التي هي هذه القصيدة نفسها فعلاً (لا قصائد أخرى تشبهها).
+- confidence: high إن اتفقت النتائج بوضوح، medium إن كان مرجّحاً، low إن كان تخميناً.
+لا تخترع؛ إن لم تعرف القصيدة ولم تدلّ النتائج عليها فاجعل title فارغاً.
+أجب بكائن JSON واحد فقط: {"title":"","poet":"","reciter":"","opening":"","matches":[1],"confidence":"high|medium|low"}`;
+    const d = await run([{ text: prompt }], signal, 512);
+    const n = (videos || []).length;
+    return {
+      title: str(d.title, 120), poet: str(d.poet, 120), reciter: str(d.reciter, 80), opening: str(d.opening, 200),
+      matches: (Array.isArray(d.matches) ? d.matches : []).map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= n),
+      confidence: /^(high|medium|low)$/.test(d.confidence) ? d.confidence : "low"
+    };
   }
   function parseLoose(t) {
     if (!t) return null;
@@ -239,5 +270,5 @@
     return out;
   }
 
-  root.QSmart = { keys, saveKeys, ready, hasYouTube: () => !!ytKey(), identify, findVideos, readShiavoiceSearch, test, mode, setMode, SmartError };
+  root.QSmart = { keys, saveKeys, ready, hasYouTube: () => !!ytKey(), identify, namePoem, findVideos, readShiavoiceSearch, test, mode, setMode, SmartError };
 })(self);

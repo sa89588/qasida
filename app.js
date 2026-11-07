@@ -309,31 +309,83 @@ async function smartFlow(info, raw, ctl){
   catch (e){ if (e.code === "cancelled") return; page.ytErr = e.code; }
   const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
   const picked = good.length ? good : vids.slice(0, 3);
-  const recs = picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
-  const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id); if (it){ it.recordings = recs; lsSet(LS.local, l2); }
+  let recs = picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
+  let named = null;
+  if (!info.title_printed && vids.length){
+    const fragment = [info.refrain, ...info.verses.slice(0, 4).map((v) => v.join(" "))].filter(Boolean).join(" / ") || info.opening;
+    try { named = await S.namePoem(fragment, vids, ctl.signal); } catch (e){ if (e.code === "cancelled") return; }
+    if (named && named.title) recs = recsFromNamed(vids, named);
+  }
+  const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id);
+  if (it){
+    it.recordings = recs;
+    if (named && named.title){ it.title = named.title.slice(0, 120); it.poet = it.poet || named.poet; if (!it.reciters.length && named.reciter) it.reciters = [named.reciter]; it.opening = it.opening || named.opening; it.confidence = named.confidence; }
+    lsSet(LS.local, l2);
+  }
   rebuild();
   page.searching = false;
   if (state.poemId === id && state.view === "poem") renderPoem(id);
 }
 
-/* Typed or dictated search: the index first, then one fast YouTube search. */
+/* Order videos: the ones Gemini says are this very poem first, marked as a match. */
+function recsFromNamed(vids, named){
+  const set = new Set((named && named.matches) || []);
+  const t = M.compact((named && named.title) || "");
+  const scored = vids.map((v, i) => ({ v, hit: set.has(i + 1) || (t.length >= 5 && M.compact(v.title).includes(t)) }));
+  const hits = scored.filter((x) => x.hit), rest = scored.filter((x) => !x.hit && x.v.score >= (set.size ? 0.8 : 0.6));
+  return [...hits, ...(hits.length ? rest.slice(0, 2) : rest.slice(0, 4))].slice(0, 8)
+    .map(({ v, hit }) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: hit ? "good" : "maybe" }));
+}
+function cleanVideoTitle(t){
+  const parts = String(t || "").split(/\s*[|\-–—_:#(\[«»"]+\s*/).map((s) => s.replace(/[^ء-ي\s]/g, " ").replace(/\s+/g, " ").trim()).filter((s) => s.length >= 4);
+  return parts[0] || "";
+}
+
+/* Typed or dictated part of a poem: find the ORIGINAL poem (title, poet, reciter), then its recordings. */
 async function textSearch(q){
   q = q.trim(); if (q.length < 2) return;
   const m = M.findMatches(state.poems, q, true);
-  if (m.best){ openPoem(m.best.p, {}); return; }
+  if (m.best){ openPoem(m.best.p, { query: q }); return; }
   if (!S.hasYouTube()){
     go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
   }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
-  work("أبحث عن «" + q + "»…", "يوتيوب");
-  try {
-    const vids = await S.findVideos({ title: q, queries: [], verses: [], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true });
-    work(null);
-    if (!vids.length){ note("لم أجد نتائج لـ «" + q + "». جرّب بيتاً آخر أو اسم الرادود.", true); return; }
-    state.temp = { id: "tmp", title: q, poet: "", reciters: [], temp: true,
-      recordings: vids.slice(0, 8).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })) };
-    openPoem(state.temp, {});
-  } catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر البحث الآن.", true); }
+  work("أتعرّف على القصيدة…", "من الجزء الذي أعطيته");
+  let vids = [], ytErr = null, named = null;
+  try { vids = await S.findVideos({ title: "", queries: [q], verses: [[q, ""]], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true }); }
+  catch (e){ if (e.code === "cancelled") return; ytErr = e.code; }
+  if (S.ready()){
+    try { named = await S.namePoem(q, vids, ctl.signal); }
+    catch (e){ if (e.code === "cancelled") return; }
+  }
+  if (ctl.signal.aborted) return;
+  work(null);
+  if (!(named && named.title) && !vids.length){
+    note(ytErr && SMART_ERR[ytErr] ? SMART_ERR[ytErr] : "لم أتعرّف على القصيدة من «" + q + "». جرّب بيتاً أطول أو أوضح.", true); return;
+  }
+  const title = (named && named.title) || cleanVideoTitle((vids[0] || {}).title) || q;
+  // Maybe the poem is already in the index under its real title.
+  const known = M.findMatches(state.poems, title, true);
+  if (known.best && known.best.s >= 0.8){ rememberFragment(known.best.p, q); openPoem(known.best.p, { query: q }); return; }
+  const recs = named ? recsFromNamed(vids, named) : vids.slice(0, 6).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
+  const reciter = (named && named.reciter) || "";
+  const poem = { title: title.slice(0, 120), aliases: [], poet: (named && named.poet) || "", opening: (named && named.opening) || "", refrain: "",
+    keywords: [q.slice(0, 60)], subject: "", reciters: reciter ? [reciter] : [], books: [], recordings: recs,
+    smart: true, titleInferred: true, confidence: named ? named.confidence : "low" };
+  if (named && named.title && named.confidence !== "low"){
+    // Keep it on the phone, with the words given, so the same part is recognised at once next time.
+    poem.id = "local-" + Date.now().toString(36);
+    const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
+    openPoem(poemById(poem.id), { query: q });
+  } else {
+    state.temp = { ...poem, id: "tmp", temp: true };
+    openPoem(state.temp, { query: q, unsure: true });
+  }
+}
+function rememberFragment(p, q){
+  if (!p.local) return;
+  const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id);
+  if (it && !(it.keywords || []).some((k) => M.compact(k) === M.compact(q))){ it.keywords = [...(it.keywords || []), q.slice(0, 60)].slice(-12); lsSet(LS.local, local); rebuild(); }
 }
 
 async function moreFromShiavoice(p, btn, msg){
@@ -433,7 +485,7 @@ function renderPoem(id){
 
   v.append(el("button", { type: "button", class: "back", onclick: () => (history.length > 1 ? history.back() : go("scan")) }, el("span", { html: IC.back }), "رجوع"));
 
-  const pill = p.temp ? "نتائج البحث" : page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page && (page.raw || page.verses) ? "تعرّفنا على القصيدة" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
+  const pill = page && page.query ? (page.unsure ? "تعرّف غير مؤكد" : "تعرّفنا عليها من الجزء الذي أعطيته") : p.temp ? "نتائج البحث" : page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page && (page.raw || page.verses) ? "تعرّفنا على القصيدة" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
   const by = el("p", { class: "by" });
   if (p.poet) by.append("شعر ", el("b", { text: p.poet }));
   const chips = el("div", { class: "chips" }, (p.reciters || []).map((r) => el("span", { text: "بصوت " + r })), p.subject ? el("span", { text: p.subject }) : null,
@@ -442,7 +494,8 @@ function renderPoem(id){
   const acts = el("div", { class: "acts" },
     p.temp ? el("button", { type: "button", onclick: () => saveTemp() }, "احفظ في الفهرس") : el("button", { type: "button", onclick: () => sharePoem(p, shareMsg) }, el("span", { html: IC.share }), "مشاركة"),
     el("a", { href: ytSearchUrl(p.title, (p.reciters || [])[0]), target: "_blank", rel: "noopener" }, "أداءات أخرى"), shareMsg);
-  v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips, acts));
+  v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips,
+    page && page.query ? el("p", { class: "by", text: "أعطيتَ: «" + page.query.slice(0, 80) + "»" }) : null, acts));
 
   const recs = playable(p);
   if (!recs.length && page && page.searching){
