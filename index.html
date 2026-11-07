@@ -72,13 +72,23 @@
     </div>
     <p class="note" id="camNote" hidden></p>
 
-    <div class="row gap">
-      <label class="btn wide">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
-        اختر صورة من المعرض
+    <div class="duo">
+      <button type="button" class="btn big" id="voiceBtn">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+        <span><b>ابحث بالصوت</b><small>أسمِعه الرادود أو ردّد بيتاً</small></span>
+      </button>
+      <label class="btn big">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+        <span><b>صورة من المعرض</b><small>صفحة صوّرتها من قبل</small></span>
         <input type="file" accept="image/*" class="vh pick">
       </label>
     </div>
+    <form class="search" id="quickForm" role="search">
+      <label class="vh" for="qq">ابحث بالعنوان أو بيت من القصيدة</label>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
+      <input type="search" id="qq" placeholder="اكتب العنوان أو بيتاً من القصيدة" autocomplete="off" enterkeyhint="search">
+      <button type="button" class="mic" data-for="qq" aria-label="إملاء صوتي"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+    </form>
 
     <a class="smart-card" id="smartCard" href="#settings"></a>
 
@@ -100,7 +110,8 @@
     <form class="search" id="searchForm" role="search">
       <label class="vh" for="q">ابحث بالعنوان أو المطلع أو الشاعر أو الرادود</label>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
-      <input type="search" id="q" placeholder="العنوان، المطلع، الشاعر أو الرادود" autocomplete="off">
+      <input type="search" id="q" placeholder="العنوان، المطلع، الشاعر أو الرادود" autocomplete="off" enterkeyhint="search">
+      <button type="button" class="mic" data-for="q" aria-label="إملاء صوتي"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
     </form>
     <div class="list" id="index"><p class="muted">جاري تحميل الفهرس…</p></div>
     <div class="search-more" id="searchMore" hidden></div>
@@ -147,6 +158,15 @@
     </div>
 
     <div class="card">
+      <h3 class="card-t">سرعة التعرّف الذكي</h3>
+      <div class="seg" role="radiogroup" aria-label="سرعة التعرّف" id="modeSeg">
+        <button type="button" role="radio" data-v="fast">أسرع</button>
+        <button type="button" role="radio" data-v="accurate">أدق</button>
+      </div>
+      <p class="muted small">«أسرع» يردّ عادة خلال ثانيتين إلى خمس ثوانٍ. جرّب «أدق» إن أخطأ في قراءة صفحة بخط صعب.</p>
+    </div>
+
+    <div class="card">
       <h3 class="card-t">المظهر</h3>
       <div class="seg" role="radiogroup" aria-label="المظهر" id="themeSeg">
         <button type="button" role="radio" data-v="auto">تلقائي</button>
@@ -169,7 +189,7 @@
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small">الإصدار ٢</p>
+      <p class="muted small">الإصدار ٣</p>
     </div>
   </section>
 </main>
@@ -189,10 +209,24 @@
   </a>
 </nav>
 
+<div class="sheet" id="voiceSheet" hidden role="dialog" aria-modal="true" aria-labelledby="vsT">
+  <div class="sheet-in">
+    <h2 id="vsT">أسمِعني القصيدة</h2>
+    <p class="muted" id="vsSub">قرّب الهاتف من صوت الرادود، أو ردّد بيتاً منها أو اسمها</p>
+    <div class="meter" id="meter" aria-hidden="true"></div>
+    <p class="vs-time" id="vsTime">٠:٠٠</p>
+    <div class="row gap" style="justify-content:center">
+      <button type="button" class="btn primary" id="vsDone">تم، ابحث</button>
+      <button type="button" class="btn" id="vsCancel">إلغاء</button>
+    </div>
+  </div>
+</div>
+
 <audio id="audio" preload="metadata"></audio>
 <script src="vendor/tesseract/tesseract.min.js"></script>
 <script src="match.js"></script>
 <script src="smart.js"></script>
+<script src="voice.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

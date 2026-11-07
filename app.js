@@ -80,7 +80,7 @@ function renderIndex(){
 function renderSearchMore(q){
   const box = $("#searchMore"); box.hidden = false; box.replaceChildren();
   if (S.hasYouTube()){
-    box.append(el("button", { type: "button", class: "btn primary", onclick: () => searchYouTubeFor(q) }, "ابحث عن «" + q + "» في يوتيوب داخل التطبيق"));
+    box.append(el("button", { type: "button", class: "btn primary", onclick: () => textSearch(q) }, "ابحث عن «" + q + "» في يوتيوب"));
   } else {
     box.append(el("a", { class: "btn", href: ytSearchUrl(q), target: "_blank", rel: "noopener" }, "ابحث في يوتيوب"),
       el("p", { class: "small muted" }, "فعّل التعرّف الذكي من ", el("a", { href: "#settings" }, "الإعدادات"), " ليعمل البحث داخل التطبيق."));
@@ -210,7 +210,7 @@ async function scanLoop(){
       const m = M.findMatches(state.poems, text, false);
       if (m.best){ buzz(); stopCamera(); openPoem(m.best.p, { raw: text }); break; }
       if (arabicLetters(text) >= 60) state.textyFrames++;
-      if (S.ready() && state.textyFrames >= 2){ buzz(); const hi = grabFrame(1800) || c; stopCamera(); await smartRecognize(hi, text); break; }
+      if (S.ready() && state.textyFrames >= 1){ buzz(); const hi = grabFrame(1400) || c; stopCamera(); await smartFromFrame(hi, text); break; }
       if (m.candidates.length) camStatus("قد تكون «" + m.candidates[0].p.title + "»… قرّب الكاميرا قليلاً");
       else if (state.frames >= 3 && !S.ready()) camStatus("ليست في الفهرس. فعّل التعرّف الذكي من الإعدادات، أو اضغط زر الالتقاط");
       else camStatus(state.textyFrames ? "أقرأ الصفحة…" : "ثبّت الهاتف واجعل الصفحة كاملة داخل الإطار");
@@ -224,7 +224,7 @@ async function scanLoop(){
   }
 }
 function buzz(){ try { navigator.vibrate && navigator.vibrate(60); } catch {} }
-async function snapNow(){ const c = grabFrame(1800); if (!c) return; stopCamera(); await recognize(c); }
+async function snapNow(){ const c = grabFrame(1500); if (!c) return; stopCamera(); await recognize(c); }
 async function pickImage(file){
   if (!file) return;
   stopCamera(); note(null);
@@ -234,19 +234,33 @@ async function pickImage(file){
     try { src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); w = src.naturalWidth; h = src.naturalHeight; }
     catch { note("تعذّر فتح هذه الصورة. جرّب صورة بصيغة JPG أو PNG.", true); return; }
   }
-  await recognize(scaleCanvas(src, w, h, 1800));
+  await recognize(scaleCanvas(src, w, h, 1500));
+}
+
+async function smartFromFrame(canvas, raw){
+  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أتعرّف على القصيدة…", "قراءة ذكية");
+  try { const info = await S.identify({ kind: "image", canvas }, ctl.signal); await smartFlow(info, raw, ctl); }
+  catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن.", true); showUnknown({ raw, candidates: [] }); }
 }
 
 /* ---------- recognition ---------- */
 async function recognize(colorCanvas){
-  work("أقرأ الصفحة…", "على هاتفك");
+  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أتعرّف على القصيدة…", S.ready() ? "قراءة على الهاتف وقراءة ذكية معاً" : "على هاتفك");
+  // Start the smart reading at once, in parallel with the on-device reading; whichever answers first wins.
+  const smartP = S.ready() ? S.identify({ kind: "image", canvas: colorCanvas }, ctl.signal) : null;
+  if (smartP) smartP.catch(() => {});
   let text = "";
-  try { text = await ocr(colorCanvas); } catch { /* reader unavailable: smart mode can still work */ }
+  try { text = await ocr(colorCanvas); } catch { /* reader unavailable: the smart reading can still answer */ }
+  if (ctl.signal.aborted) return;
   const m = M.findMatches(state.poems, text, false);
-  if (m.best){ work(null); openPoem(m.best.p, { raw: text }); return; }
-  if (S.ready()){ await smartRecognize(colorCanvas, text, m.candidates); return; }
-  work(null);
-  showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) });
+  if (m.best){ ctl.abort(); work(null); openPoem(m.best.p, { raw: text }); return; }
+  if (!smartP){ work(null); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
+  let info;
+  try { info = await smartP; }
+  catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
+  await smartFlow(info, text, ctl);
 }
 
 const SMART_ERR = {
@@ -257,57 +271,119 @@ const SMART_ERR = {
   offline: "لا يوجد اتصال بالإنترنت. التعرّف الذكي يحتاج اتصالاً.",
   network: "تعذّر الاتصال بالخدمة. تحقّق من الإنترنت ثم أعد المحاولة.",
   forbidden: "المفتاح لا يملك صلاحية هذه الخدمة. راجع الإعدادات.",
-  bad_reply: "لم تكتمل قراءة الصفحة. صوّرها بإضاءة أفضل وأعد المحاولة."
+  bad_reply: "لم تكتمل القراءة. أعد المحاولة.",
+  no_yt_key: "أضف مفتاح YouTube من الإعدادات ليبحث التطبيق عن التسجيل."
 };
-async function smartRecognize(colorCanvas, raw, localCands){
-  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
-  work("أتعرّف على القصيدة…", "قراءة ذكية للصفحة");
-  let info;
-  try { info = await S.identify(colorCanvas, ctl.signal); }
-  catch (e){
-    if (e.code === "cancelled") return;
-    work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true);
-    showUnknown({ raw, candidates: (localCands || []).map((c) => c.p) });
-    return;
-  }
-  if (ctl.signal.aborted) return;
-  if (!info.is_poem){ work(null); note("لم أجد قصيدة في هذه الصورة. صوّر الصفحة كاملة بإضاءة جيدة.", true); return; }
 
-  // The poem may already be in the index: match on the clean text.
+/* After Gemini identified the poem: open it at once, then fill in the recordings. */
+async function smartFlow(info, raw, ctl){
+  if (!info.is_poem){ work(null); note("لم أتعرّف على قصيدة في هذا. صوّر الصفحة كاملة أو أسمِعني مقطعاً أوضح.", true); return; }
   const clean = [info.title, info.refrain, info.opening, ...info.verses.map((v) => v.join(" "))].join("\n");
   const lm = M.findMatches(state.poems, clean, false);
-  if (lm.best){ work(null); openPoem(lm.best.p, { verses: info.verses, raw }); return; }
+  if (lm.best){ work(null); openPoem(lm.best.p, { verses: info.verses, raw, autoplay: true }); return; }
 
-  let vids = [], ytErr = null;
-  if (S.hasYouTube()){
-    work("أبحث عن التسجيل…", "يوتيوب");
-    try { vids = await S.findVideos(info, ctl.signal); }
-    catch (e){ if (e.code === "cancelled") return; ytErr = e.code; }
-  }
-  if (ctl.signal.aborted) return;
-  work(null);
-  const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
-  const picked = good.length ? good : vids.slice(0, 3);
   const title = info.title || info.refrain || info.opening || (info.verses[0] || [""])[0] || "قصيدة";
+  const id = "local-" + Date.now().toString(36);
   const poem = {
-    id: "local-" + Date.now().toString(36), title: title.slice(0, 120), aliases: [], poet: info.poet, opening: info.opening, refrain: info.refrain,
+    id, title: title.slice(0, 120), aliases: [], poet: info.poet, opening: info.opening, refrain: info.refrain,
     keywords: [info.refrain, ...info.verses.slice(0, 4).map((v) => v[0])].filter((s) => s && s.length >= 8).map((s) => s.slice(0, 60)),
     subject: info.subject, reciters: info.reciter ? [info.reciter] : [], books: info.page ? [{ book: "", page: info.page }] : [],
-    recordings: picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })),
-    smart: true, titleInferred: !info.title_printed && !!info.title, confidence: info.confidence
+    recordings: [], smart: true, titleInferred: !info.title_printed && !!info.title, confidence: info.confidence
   };
-  // Save to this phone so the page is recognised offline next time.
   const local = lsGet(LS.local, []); local.push(poem); lsSet(LS.local, local); rebuild();
-  openPoem(poemById(poem.id), { verses: info.verses, raw, ytErr, smartNew: true });
+  work(null);
+  const page = { verses: info.verses, raw, smartNew: true, searching: S.hasYouTube() };
+  openPoem(poemById(id), page);
+  if (!S.hasYouTube()) return;
+  let vids = [];
+  try { vids = await S.findVideos(info, ctl.signal); }
+  catch (e){ if (e.code === "cancelled") return; page.ytErr = e.code; }
+  const good = vids.filter((v) => v.score >= 0.7).slice(0, 5);
+  const picked = good.length ? good : vids.slice(0, 3);
+  const recs = picked.map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" }));
+  const l2 = lsGet(LS.local, []); const it = l2.find((x) => x.id === id); if (it){ it.recordings = recs; lsSet(LS.local, l2); }
+  rebuild();
+  page.searching = false; page.autoplay = true;
+  if (state.poemId === id && state.view === "poem") renderPoem(id);
 }
 
-async function searchYouTubeFor(q){
-  const box = $("#searchMore"); box.replaceChildren(el("p", { class: "muted", text: "أبحث في يوتيوب…" }));
+/* Typed or dictated search: the index first, then one fast YouTube search. */
+async function textSearch(q){
+  q = q.trim(); if (q.length < 2) return;
+  const m = M.findMatches(state.poems, q, true);
+  if (m.best){ openPoem(m.best.p, { autoplay: true }); return; }
+  if (!S.hasYouTube()){
+    go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
+  }
+  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أبحث عن «" + q + "»…", "يوتيوب");
   try {
-    const vids = await S.findVideos({ title: q, queries: [q], verses: [], refrain: "", opening: q, reciter: "" });
-    state.temp = { id: "tmp", title: q, poet: "", reciters: [], recordings: vids.slice(0, 8).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })), temp: true };
-    go("p-tmp");
-  } catch (e){ box.replaceChildren(el("p", { class: "err", text: SMART_ERR[e.code] || "تعذّر البحث الآن." })); }
+    const vids = await S.findVideos({ title: q, queries: [], verses: [], refrain: "", opening: q, reciter: "" }, ctl.signal, { max: 1, noExtra: true });
+    work(null);
+    if (!vids.length){ note("لم أجد نتائج لـ «" + q + "». جرّب بيتاً آخر أو اسم الرادود.", true); return; }
+    state.temp = { id: "tmp", title: q, poet: "", reciters: [], temp: true,
+      recordings: vids.slice(0, 8).map((v) => ({ type: "youtube", id: v.id, source: "يوتيوب", reciter: v.channel, note: v.title, match: v.score >= 0.7 ? "good" : "maybe" })) };
+    openPoem(state.temp, { autoplay: true });
+  } catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر البحث الآن.", true); }
+}
+
+/* ---------- voice ---------- */
+const V = window.QVoice;
+async function voiceSearch(){
+  note(null);
+  if (!S.ready()){
+    if (V.canDictate()){ dictateInto($("#qq"), $("#quickForm .mic")); return; }
+    note("البحث بالصوت يحتاج تفعيل التعرّف الذكي من الإعدادات.", true); return;
+  }
+  if (!V.canRecord()){ if (V.canDictate()){ dictateInto($("#qq"), $("#quickForm .mic")); return; } note("هذا المتصفح لا يتيح التسجيل الصوتي.", true); return; }
+  stopCamera(); pauseMedia();
+  const sheet = $("#voiceSheet"), meter = $("#meter");
+  if (!meter.children.length) for (let i = 0; i < 28; i++) meter.append(el("i"));
+  const bars = [...meter.children]; const hist = new Array(bars.length).fill(0);
+  sheet.hidden = false; $("#vsTime").textContent = "٠:٠٠ / ٠:١٢";
+  let rec;
+  try {
+    rec = await V.record({ maxMs: 12000,
+      onLevel: (lv) => { hist.push(lv); hist.shift(); bars.forEach((b, i) => { b.style.height = Math.max(8, Math.round(hist[i] * 100)) + "%"; }); },
+      onTick: (ms, max) => { $("#vsTime").textContent = fmtTime(ms / 1000) + " / " + fmtTime(max / 1000); } });
+  } catch (e){
+    sheet.hidden = true;
+    note(e.code === "denied" ? "لم يُسمح باستخدام الميكروفون. امنح التطبيق الإذن من إعدادات المتصفح." : "تعذّر تشغيل الميكروفون على هذا الجهاز.", true);
+    return;
+  }
+  $("#vsDone").onclick = () => rec.stop();
+  $("#vsCancel").onclick = () => rec.cancel();
+  let clip;
+  try { clip = await rec.done; } catch { sheet.hidden = true; return; }
+  sheet.hidden = true;
+  if (clip.ms < 1500){ note("المقطع قصير جداً. سجّل ثلاث ثوانٍ على الأقل.", true); return; }
+  state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أستمع إلى المقطع…", "تعرّف ذكي بالصوت");
+  let audio;
+  try { audio = await V.toWavBase64(clip.blob); }
+  catch { audio = { b64: await V.blobToB64(clip.blob), mime: (clip.blob.type || "audio/mp4").split(";")[0] }; }
+  let info;
+  try { info = await S.identify({ kind: "audio", b64: audio.b64, mime: audio.mime }, ctl.signal); }
+  catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف على المقطع. أعد المحاولة.", true); return; }
+  await smartFlow(info, "", ctl);
+}
+let dictating = null;
+async function dictateInto(input, btn){
+  if (dictating){ dictating.stop && dictating.stop(); return; }
+  btn && btn.classList.add("on");
+  const before = input.value;
+  input.value = ""; input.placeholder = "تكلّم الآن…";
+  const p = V.dictate({ onInterim: (t) => { input.value = t; } });
+  dictating = p;
+  let text = "";
+  try { text = await p; } catch (e){ if (e.code === "denied") note("لم يُسمح باستخدام الميكروفون.", true); }
+  dictating = null; btn && btn.classList.remove("on");
+  input.placeholder = input.id === "qq" ? "اكتب العنوان أو بيتاً من القصيدة" : "العنوان، المطلع، الشاعر أو الرادود";
+  text = (text || input.value || "").trim();
+  if (!text){ input.value = before; return; }
+  input.value = text;
+  if (input.id === "q") renderIndex();
+  textSearch(text);
 }
 
 /* ---------- poem view ---------- */
@@ -323,7 +399,7 @@ function renderPoem(id){
 
   v.append(el("button", { type: "button", class: "back", onclick: () => (history.length > 1 ? history.back() : go("scan")) }, el("span", { html: IC.back }), "رجوع"));
 
-  const pill = page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page ? "تعرّفنا على القصيدة" : p.temp ? "نتائج يوتيوب" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
+  const pill = p.temp ? "نتائج البحث" : page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page && (page.raw || page.verses) ? "تعرّفنا على القصيدة" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
   const by = el("p", { class: "by" });
   if (p.poet) by.append("شعر ", el("b", { text: p.poet }));
   const chips = el("div", { class: "chips" }, (p.reciters || []).map((r) => el("span", { text: "بصوت " + r })), p.subject ? el("span", { text: p.subject }) : null,
@@ -335,7 +411,9 @@ function renderPoem(id){
   v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips, acts));
 
   const recs = playable(p);
-  if (recs.length){
+  if (!recs.length && page && page.searching){
+    v.append(el("div", { class: "card" }, el("div", { class: "searching" }, el("div", { class: "spin", "aria-hidden": "true" }), el("div", { class: "work-t" }, el("strong", { text: "أبحث عن التسجيل…" }), el("span", { text: "يوتيوب" })))));
+  } else if (recs.length){
     const stage = el("div", { class: "player-stage" });
     const list = el("div", { class: "recs" });
     let yn = 0, an = 0;
@@ -350,7 +428,8 @@ function renderPoem(id){
     const card = el("div", { class: "card" }, stage);
     if (recs.length > 1) card.append(el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), list);
     v.append(card);
-    mount(stage, p, recs[0], false);
+    const auto = !!(page && page.autoplay); if (page) page.autoplay = false;
+    mount(stage, p, recs[0], auto);
   } else {
     const c = el("div", { class: "card" }, el("h3", { class: "card-t", text: "لا يوجد تسجيل بعد" }));
     if (page && page.ytErr === "quota") c.append(el("p", { class: "muted small", text: "انتهى حد بحث يوتيوب المجاني لليوم. يمكنك البحث يدوياً ثم لصق الرابط أدناه." }));
@@ -383,57 +462,116 @@ function renderPoem(id){
   if (p.local && !p.temp) v.append(el("div", { class: "row" }, el("button", { type: "button", class: "btn", onclick: () => deleteLocal(p.id) }, "احذفها من هاتفي")));
 }
 
+let ytApiP = null, ytTimer = null, ytPlayer = null;
+function ytApi(){
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (ytApiP) return ytApiP;
+  ytApiP = new Promise((res, rej) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { prev && prev(); res(window.YT); };
+    const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; s.async = true;
+    s.onerror = () => { ytApiP = null; rej(new Error("yt")); };
+    document.head.append(s);
+    setTimeout(() => { if (!(window.YT && window.YT.Player)) { ytApiP = null; rej(new Error("timeout")); } }, 9000);
+  });
+  return ytApiP;
+}
+
 function mount(stage, p, r, autoplay){
   pauseMedia();
   stage.replaceChildren();
-  if (r.type === "youtube"){
-    const holder = el("div", { class: "yt" });
-    const load = () => holder.replaceChildren(el("iframe", {
-      src: "https://www.youtube-nocookie.com/embed/" + r.id + "?autoplay=1&playsinline=1&rel=0&modestbranding=1",
-      title: p.title + (r.reciter ? " — " + r.reciter : ""), allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin"
-    }));
-    holder.append(el("button", { type: "button", "aria-label": "شغّل المقطع", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/hqdefault.jpg')", onclick: load },
-      el("span", { class: "play" }), el("span", { class: "cap", text: r.note || p.title })));
-    stage.append(holder, el("p", { class: "small muted" }, "إن لم يعمل المقطع هنا ", el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتحه في يوتيوب"), "."));
-    if (autoplay) load();
-  } else {
-    const a = $("#audio");
-    const src = safeUrl(r.src);
-    if (a.getAttribute("src") !== src){ a.src = src; a.load(); }
-    const btn = el("button", { type: "button", class: "ap-btn", "aria-label": "تشغيل", html: IC.play });
-    const cur = el("span", { text: "٠:٠٠" }), dur = el("span", { text: "--:--" });
-    const seek = el("input", { type: "range", min: "0", max: "1000", value: "0", "aria-label": "موضع التشغيل" });
-    const err = el("p", { class: "small err", hidden: true }, "تعذّر تشغيل الملف من مصدره الآن. ", r.page ? el("a", { href: safeUrl(r.page), target: "_blank", rel: "noopener" }, "افتح صفحته") : null);
-    const speeds = el("div", { class: "speeds", role: "group", "aria-label": "السرعة" });
-    [0.75, 1, 1.25, 1.5].forEach((s) => { const b = el("button", { type: "button", "aria-pressed": a.playbackRate === s ? "true" : "false", onclick: () => { a.playbackRate = s; $$("button", speeds).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); } }, ar(s) + "×"); speeds.append(b); });
-    const sync = () => {
-      btn.innerHTML = a.paused ? IC.play : IC.pause; btn.setAttribute("aria-label", a.paused ? "تشغيل" : "إيقاف مؤقت");
-      cur.textContent = fmtTime(a.currentTime); dur.textContent = isFinite(a.duration) ? fmtTime(a.duration) : "--:--";
-      if (isFinite(a.duration) && a.duration > 0 && document.activeElement !== seek) seek.value = String(Math.round(a.currentTime / a.duration * 1000));
-    };
-    btn.addEventListener("click", () => { if (a.paused){ a.play().catch(() => { err.hidden = false; }); setSession(p, r); } else a.pause(); });
-    seek.addEventListener("input", () => { if (isFinite(a.duration)) a.currentTime = seek.value / 1000 * a.duration; });
-    let last = 0;
-    a.onplay = a.onpause = a.ondurationchange = sync;
-    a.ontimeupdate = () => {
-      sync();
-      if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[src] = Math.floor(a.currentTime); lsSet(LS.pos, ps); }
-    };
-    a.onloadedmetadata = () => { const pos = lsGet(LS.pos, {})[src]; if (pos && pos < a.duration - 5) a.currentTime = pos; sync(); };
-    a.onerror = () => { err.hidden = false; };
-    stage.append(el("div", { class: "aplayer" },
-      el("div", { class: "ap-top" }, btn, el("div", { class: "ap-info" }, el("b", { text: p.title }), el("span", { text: [r.reciter, r.note, r.source].filter(Boolean).join(" · ") }))),
-      el("div", { class: "ap-seek", dir: "ltr" }, cur, seek, dur),
-      el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("span", { class: "small muted", text: "السرعة" }), speeds), err));
-    sync();
-    if (autoplay){ a.play().catch(() => {}); setSession(p, r); }
-  }
+  if (r.type === "youtube") return mountYouTube(stage, p, r, autoplay);
+  const a = $("#audio");
+  const src = safeUrl(r.src);
+  if (a.getAttribute("src") !== src){ a.src = src; a.load(); }
+  const ui = playerUI(p, r);
+  ui.err.append(r.page ? el("a", { href: safeUrl(r.page), target: "_blank", rel: "noopener" }, "افتح صفحته") : "");
+  let last = 0;
+  const sync = () => ui.sync(!a.paused, a.currentTime, a.duration);
+  ui.onToggle = () => { if (a.paused){ a.play().catch(() => { ui.err.hidden = false; }); setSession(p, r); } else a.pause(); };
+  ui.onSeek = (f) => { if (isFinite(a.duration)) a.currentTime = f * a.duration; };
+  ui.onSkip = (d) => { a.currentTime = Math.max(0, a.currentTime + d); };
+  ui.onRate = (s) => { a.playbackRate = s; };
+  a.onplay = a.onpause = a.ondurationchange = sync;
+  a.ontimeupdate = () => { sync(); if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[src] = Math.floor(a.currentTime); lsSet(LS.pos, ps); } };
+  a.onloadedmetadata = () => { const pos = lsGet(LS.pos, {})[src]; if (pos && pos < a.duration - 5) a.currentTime = pos; sync(); };
+  a.onerror = () => { ui.err.hidden = false; };
+  stage.append(ui.root); sync();
+  if (autoplay){ a.play().catch(() => {}); setSession(p, r); }
+}
+
+/* Shared listening controls for mp3 and YouTube. */
+function playerUI(p, r){
+  const btn = el("button", { type: "button", class: "ap-btn", "aria-label": "تشغيل", html: IC.play });
+  const back = el("button", { type: "button", class: "seekbtn", "aria-label": "رجوع ١٠ ثوانٍ", text: "١٠-" });
+  const fwd = el("button", { type: "button", class: "seekbtn", "aria-label": "تقديم ١٠ ثوانٍ", text: "+١٠" });
+  const cur = el("span", { text: "٠:٠٠" }), dur = el("span", { text: "--:--" });
+  const seek = el("input", { type: "range", min: "0", max: "1000", value: "0", "aria-label": "موضع التشغيل" });
+  const err = el("p", { class: "small err", hidden: true }, "تعذّر التشغيل من المصدر الآن. ");
+  const speeds = el("div", { class: "speeds", role: "group", "aria-label": "السرعة" });
+  const ui = { err, onToggle: null, onSeek: null, onSkip: null, onRate: null };
+  [0.75, 1, 1.25, 1.5].forEach((s) => { const b = el("button", { type: "button", "aria-pressed": s === 1 ? "true" : "false", onclick: () => { ui.onRate && ui.onRate(s); $$("button", speeds).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); } }, ar(s) + "×"); speeds.append(b); });
+  btn.addEventListener("click", () => ui.onToggle && ui.onToggle());
+  back.addEventListener("click", () => ui.onSkip && ui.onSkip(-10));
+  fwd.addEventListener("click", () => ui.onSkip && ui.onSkip(10));
+  seek.addEventListener("input", () => ui.onSeek && ui.onSeek(seek.value / 1000));
+  ui.sync = (playing, t, d) => {
+    btn.innerHTML = playing ? IC.pause : IC.play; btn.setAttribute("aria-label", playing ? "إيقاف مؤقت" : "تشغيل");
+    cur.textContent = fmtTime(t || 0); dur.textContent = isFinite(d) && d > 0 ? fmtTime(d) : "--:--";
+    if (isFinite(d) && d > 0 && document.activeElement !== seek) seek.value = String(Math.round((t || 0) / d * 1000));
+  };
+  ui.root = el("div", { class: "aplayer" },
+    el("div", { class: "ap-top" }, back, btn, fwd, el("div", { class: "ap-info" }, el("b", { text: r.type === "youtube" && r.note ? r.note : p.title }), el("span", { text: [r.reciter, r.type === "audio" ? r.note : "", r.type === "youtube" ? "يوتيوب" : r.source].filter(Boolean).join(" · ") }))),
+    el("div", { class: "ap-seek", dir: "ltr" }, cur, seek, dur),
+    el("div", { class: "row", style: "justify-content:space-between;gap:8px" }, el("span", { class: "small muted", text: "السرعة" }), speeds), err);
+  return ui;
+}
+
+function mountYouTube(stage, p, r, autoplay){
+  const box = el("div", { class: "yt" });
+  const slot = el("div");
+  box.append(slot);
+  const ui = playerUI(p, r);
+  ui.err.append(el("a", { href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتحه في يوتيوب"));
+  const wrap = el("div", { class: "listen" }, box, ui.root);
+  stage.append(wrap);
+  const fallback = () => {
+    box.replaceChildren(el("iframe", { src: "https://www.youtube-nocookie.com/embed/" + r.id + "?playsinline=1&rel=0" + (autoplay ? "&autoplay=1" : ""), title: p.title,
+      allow: "autoplay; encrypted-media; picture-in-picture; fullscreen", allowfullscreen: true, referrerpolicy: "strict-origin-when-cross-origin" }));
+    ui.root.hidden = true;
+  };
+  ytApi().then((YT) => {
+    if (!slot.isConnected) return;
+    ytPlayer = new YT.Player(slot, {
+      videoId: r.id, host: "https://www.youtube-nocookie.com",
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, autoplay: autoplay ? 1 : 0 },
+      events: {
+        onReady: (e) => {
+          const pl = e.target;
+          ui.onToggle = () => { const st = pl.getPlayerState(); if (st === 1 || st === 3) pl.pauseVideo(); else { pl.playVideo(); setSession(p, r); } };
+          ui.onSeek = (f) => { const d = pl.getDuration(); if (d) pl.seekTo(f * d, true); };
+          ui.onSkip = (s) => pl.seekTo(Math.max(0, pl.getCurrentTime() + s), true);
+          ui.onRate = (s) => { try { pl.setPlaybackRate(s); } catch {} };
+          clearInterval(ytTimer);
+          ytTimer = setInterval(() => { if (!box.isConnected){ clearInterval(ytTimer); return; } try { ui.sync(pl.getPlayerState() === 1, pl.getCurrentTime(), pl.getDuration()); } catch {} }, 400);
+          if (autoplay){ try { pl.playVideo(); setSession(p, r); } catch {} }
+        },
+        onError: () => { ui.err.hidden = false; }
+      }
+    });
+  }).catch(fallback);
 }
 function setSession(p, r){
   if (!("mediaSession" in navigator)) return;
   try { navigator.mediaSession.metadata = new MediaMetadata({ title: p.title, artist: r.reciter || "", album: p.poet ? "شعر " + p.poet : "قارئ القصائد", artwork: [{ src: abs("icons/icon-512.png"), sizes: "512x512", type: "image/png" }] }); } catch {}
 }
-function pauseMedia(){ try { $("#audio").pause(); } catch {} $$("#view-poem .yt iframe").forEach((f) => f.remove()); }
+function pauseMedia(){
+  try { $("#audio").pause(); } catch {}
+  clearInterval(ytTimer);
+  try { ytPlayer && ytPlayer.destroy(); } catch {}
+  ytPlayer = null;
+  $$("#view-poem .yt iframe").forEach((f) => f.remove());
+}
 
 function saveTemp(){
   const t = state.temp; if (!t) return;
@@ -541,6 +679,7 @@ function fillSettings(){
   const k = S.keys(); $("#kGemini").value = k.gemini; $("#kYoutube").value = k.youtube;
   let t = "auto"; try { t = localStorage.getItem(LS.theme) || "auto"; } catch {}
   $$("#themeSeg button").forEach((b) => b.setAttribute("aria-checked", String(t === b.dataset.v)));
+  $$("#modeSeg button").forEach((b) => b.setAttribute("aria-checked", String(S.mode() === b.dataset.v)));
 }
 $("#kShow").addEventListener("change", (e) => { const t = e.target.checked ? "text" : "password"; $("#kGemini").type = t; $("#kYoutube").type = t; });
 $("#keysForm").addEventListener("submit", async (e) => {
@@ -602,8 +741,15 @@ $$("input.pick").forEach((i) => i.addEventListener("change", (e) => { const f = 
 $("#searchForm").addEventListener("submit", (e) => {
   e.preventDefault(); const q = $("#q").value.trim(); if (q.length < 2) return;
   const m = M.findMatches(state.poems, q, true);
-  if (m.best) go("p-" + m.best.p.id); else { renderIndex(); renderSearchMore(q); }
+  if (m.best) openPoem(m.best.p, { autoplay: true }); else textSearch(q);
 });
+$("#quickForm").addEventListener("submit", (e) => { e.preventDefault(); $("#qq").blur(); textSearch($("#qq").value); });
+$("#voiceBtn").addEventListener("click", voiceSearch);
+$$(".search .mic").forEach((b) => b.addEventListener("click", () => {
+  const input = document.getElementById(b.dataset.for);
+  if (V.canDictate()) dictateInto(input, b); else voiceSearch();
+}));
+$$("#modeSeg button").forEach((b) => b.addEventListener("click", () => { S.setMode(b.dataset.v); $$("#modeSeg button").forEach((x) => x.setAttribute("aria-checked", String(x === b))); }));
 let qt; $("#q").addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(renderIndex, 150); });
 $$(".tabbar a").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.tab); }));
 document.addEventListener("visibilitychange", () => { if (document.hidden && state.stream) stopCamera(); });
