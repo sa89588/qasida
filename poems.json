@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "updated": "2026-11-07",
+  "poems": [
+    {
+      "id": "ya-abu-alsibtain",
+      "title": "يا بو السبطين",
+      "aliases": ["يابو السبطين", "يا ابو السبطين"],
+      "poet": "جابر الكاظمي",
+      "opening": "يا بو السبطين جيت ابلا عين",
+      "keywords": ["القطع الجفين ما عفت احسين", "انته الوصيت وانه الوفيت"],
+      "subject": "أبو الفضل العباس (ع)",
+      "reciters": ["باسم الكربلائي"],
+      "books": [{ "book": "هذا ما قرأت في أبي الفضل العباس (ع)", "page": "293" }],
+      "recordings": [
+        { "type": "audio", "src": "https://static.rafed.net/MP3Files/al-retha/basem/wojood-lewojoodi/08005-ya_bw_alsbtyn.mp3", "page": "https://rafed.net/media/audio/87218", "source": "شبكة رافد", "reciter": "باسم الكربلائي", "note": "إصدار وجود لوجودي 1428 هـ" },
+        { "type": "youtube", "id": "q0yBD7C9OSg", "source": "يوتيوب", "reciter": "باسم الكربلائي", "note": "إصدار وجود لوجودي 1428 هـ - 2007 م" },
+        { "type": "youtube", "id": "ZMULOKVxhvk", "source": "يوتيوب", "reciter": "باسم الكربلائي", "note": "إصدار وجود لوجودي، نسخة ثانية" },
+        { "type": "link", "url": "https://rawda.app/track/a3907b1c-bea2-4f0f-9232-54a02772f967", "source": "تطبيق روضة", "reciter": "باسم الكربلائي", "note": "20:28" },
+        { "type": "link", "url": "https://shoaraa.com/p10826", "source": "شعراء أهل البيت", "reciter": "", "note": "نص القصيدة مكتوباً" }
+      ]
+    },
+    {
+      "id": "ghadab-rab-alibad",
+      "title": "غضب رب العباد",
+      "aliases": [],
+      "poet": "السيد عبد الخالق المحنة",
+      "opening": "غضب رب العباد نزل برض السواد",
+      "keywords": ["صارت الكعبه اسيره", "يا كمر هاشم سلام"],
+      "subject": "أبو الفضل العباس (ع) يوم الطف",
+      "reciters": ["باسم الكربلائي"],
+      "books": [{ "book": "هذا ما قرأت في أبي الفضل العباس (ع)", "page": "520" }],
+      "recordings": [
+        { "type": "youtube", "id": "5T2axQXbqfA", "source": "يوتيوب", "reciter": "باسم الكربلائي", "note": "" },
+        { "type": "youtube", "id": "oeAThtyUrd0", "source": "يوتيوب", "reciter": "باسم الكربلائي", "note": "كربلاء 1435 هـ، العتبة العباسية المقدسة" },
+        { "type": "audio", "src": "https://static.rafed.net/MP3Files/al-retha/basem/all-basem/1435/shavval-tehran/ghazzab-rab-alebad.mp3", "page": "https://rafed.net/media/audio/124571", "source": "شبكة رافد", "reciter": "باسم الكربلائي", "note": "تسجيل 1435 هـ" },
+        { "type": "link", "url": "https://shiavoice.com/play-TsS73.html", "source": "صوت الشيعة", "reciter": "باسم الكربلائي", "note": "ليلة 7 محرم 1434 هـ" }
+      ]
+    }
+  ]
+}

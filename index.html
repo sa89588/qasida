@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>قارئ القصائد الحسينية</title>
+<meta name="description" content="وجّه الكاميرا إلى صفحة القصيدة فتسمعها بصوت الرادود مباشرة.">
+<meta name="theme-color" content="#8f1c21">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="قارئ القصائد">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="" width="40" height="40">
+      <div>
+        <h1>قارئ القصائد الحسينية</h1>
+        <p class="muted small">وجّه الكاميرا إلى صفحة القصيدة فتسمعها بصوت الرادود</p>
+      </div>
+    </div>
+    <button type="button" id="installBtn" class="btn ghost" hidden>ثبّت التطبيق</button>
+  </header>
+  <p class="hint" id="iosHint" hidden>للتثبيت على آيفون: اضغط زر المشاركة <span aria-hidden="true">⎋</span> في سفاري ثم اختر «إضافة إلى الشاشة الرئيسية».</p>
+  <p class="hint" id="updateHint" hidden>نسخة جديدة من التطبيق جاهزة. <button type="button" class="linkbtn" id="reloadBtn">حدّث الآن</button></p>
+
+  <section class="panel scan" aria-labelledby="scanH">
+    <h2 id="scanH" class="vh">المسح بالكاميرا</h2>
+    <div class="cam" id="cam">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="cam-idle" id="camIdle">
+        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <p>ضع الصفحة كاملة داخل الإطار، والعنوان ظاهر في أعلاها.</p>
+      </div>
+      <div class="cam-status" id="camStatus" aria-live="polite" hidden></div>
+    </div>
+    <div class="row controls">
+      <button type="button" class="btn primary" id="camBtn">افتح الكاميرا</button>
+      <button type="button" class="btn" id="shotBtn" hidden>التقط الآن</button>
+      <button type="button" class="btn" id="torchBtn" hidden aria-pressed="false">الفلاش</button>
+      <button type="button" class="btn" id="stopBtn" hidden>أغلق الكاميرا</button>
+      <label class="btn" id="pickLbl">
+        اختر صورة
+        <input type="file" id="pickIn" accept="image/*" class="vh">
+      </label>
+    </div>
+    <p class="small muted" id="camNote">يقرأ التطبيق الصفحة على هاتفك نفسه، ويتعرّف على القصيدة تلقائياً خلال ثوانٍ.</p>
+    <div class="progress" id="progress" hidden><div class="bar" id="bar"></div><span id="progText"></span></div>
+    <form class="search" id="searchForm" role="search">
+      <label class="vh" for="q">ابحث بعنوان القصيدة أو مطلعها أو اسم الشاعر</label>
+      <input type="search" id="q" placeholder="أو اكتب العنوان أو المطلع أو اسم الشاعر" autocomplete="off">
+      <button type="submit" class="btn">ابحث</button>
+    </form>
+  </section>
+
+  <section class="panel" id="result" hidden aria-live="polite"></section>
+
+  <section class="panel" aria-labelledby="idxH">
+    <div class="row between">
+      <h2 id="idxH" class="h3">فهرس القصائد</h2>
+      <span class="small muted" id="idxCount"></span>
+    </div>
+    <div class="list" id="index"><p class="muted">جاري تحميل الفهرس…</p></div>
+    <details class="mine" id="mine">
+      <summary>إضافاتي على هذا الهاتف</summary>
+      <p class="small muted">الروابط والقصائد التي تضيفها تُحفظ على هاتفك. شاركها مع مشرف الفهرس ليضيفها للجميع.</p>
+      <div class="row">
+        <button type="button" class="btn" id="exportBtn">شارك إضافاتي</button>
+        <span class="small muted" id="exportMsg" aria-live="polite"></span>
+      </div>
+      <label class="vh" for="exportBox">نص الإضافات</label>
+      <textarea id="exportBox" rows="4" readonly hidden dir="ltr"></textarea>
+    </details>
+  </section>
+
+  <footer class="small muted">تُشغَّل التسجيلات من مصادرها (شبكة رافد، يوتيوب وغيرها) داخل التطبيق. قراءة الصفحة تتم على هاتفك ولا تُرسل صورتك إلى أي خادم.</footer>
+</div>
+<script src="vendor/tesseract/tesseract.min.js"></script>
+<script src="match.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
