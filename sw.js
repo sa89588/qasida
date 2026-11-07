@@ -1,6 +1,9 @@
-/* Offline support: the app shell and the on-device reader are cached; the poem index is refreshed when online.
-   Audio and YouTube stream from their sources and are not cached. */
-const VERSION = "qasida-v3-1";
+/* Offline support.
+   - App code (pages, scripts, styles, index): network first, so an update is never mixed with old files;
+     the cached copy is used only when offline.
+   - Reader files and icons (large, rarely change): cache first.
+   - Audio and YouTube stream from their sources and are not cached. */
+const VERSION = "qasida-v4";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "voice.js", "poems.json", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
@@ -8,7 +11,11 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)));
+  e.waitUntil((async () => {
+    const c = await caches.open(VERSION);
+    await c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })));
+    await self.skipWaiting(); // take over at once: never leave an old worker serving old code
+  })());
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
@@ -18,39 +25,40 @@ self.addEventListener("activate", (e) => {
 });
 self.addEventListener("message", (e) => { if (e.data === "skip-waiting") self.skipWaiting(); });
 
+const isStatic = (path) => /\/(vendor|icons)\//.test(path);
+
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  // Google Fonts: serve cached copy, refresh in background.
-  if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
-    e.respondWith(staleWhileRevalidate(req));
-    return;
-  }
+  if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") { e.respondWith(staleWhileRevalidate(req)); return; }
   if (url.origin !== self.location.origin) return;
   if (req.headers.has("range")) return;
 
-  // The index and pages: network first so new poems appear, cache when offline.
-  if (req.mode === "navigate" || url.pathname.endsWith("/poems.json")) {
+  if (isStatic(url.pathname)) {
     e.respondWith((async () => {
-      try {
-        const res = await fetch(req);
-        if (res.ok) (await caches.open(VERSION)).put(req.mode === "navigate" ? "index.html" : req, res.clone());
-        return res;
-      } catch {
-        return (await caches.match(req.mode === "navigate" ? "index.html" : req)) || Response.error();
-      }
+      const c = await caches.open(VERSION);
+      const hit = await c.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok) c.put(req, res.clone());
+      return res;
     })());
     return;
   }
-  // Everything else on this site (scripts, reader files, icons): cache first.
+
+  // App code: network first, cache when offline. Query strings (?v=) are ignored for the offline copy.
   e.respondWith((async () => {
-    const hit = await caches.match(req);
-    if (hit) return hit;
-    const res = await fetch(req);
-    if (res.ok) (await caches.open(VERSION)).put(req, res.clone());
-    return res;
+    const c = await caches.open(VERSION);
+    const key = req.mode === "navigate" ? "index.html" : new Request(url.origin + url.pathname);
+    try {
+      const res = await fetch(req, { cache: "no-cache" });
+      if (res.ok) c.put(key, res.clone());
+      return res;
+    } catch {
+      return (await c.match(key)) || (await c.match(req, { ignoreSearch: true })) || Response.error();
+    }
   })());
 });
 

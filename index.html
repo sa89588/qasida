@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <header class="appbar">
@@ -184,7 +184,7 @@
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small">الإصدار ٣</p>
+      <p class="muted small" id="verLine">الإصدار ٤</p>
     </div>
   </section>
 </main>
@@ -227,10 +227,10 @@
 </div>
 
 <audio id="audio" preload="metadata"></audio>
-<script src="vendor/tesseract/tesseract.min.js"></script>
-<script src="match.js"></script>
-<script src="smart.js"></script>
-<script src="voice.js"></script>
-<script src="app.js"></script>
+<script src="vendor/tesseract/tesseract.min.js?v=4"></script>
+<script src="match.js?v=4"></script>
+<script src="smart.js?v=4"></script>
+<script src="voice.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

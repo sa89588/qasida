@@ -741,6 +741,12 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
   }).catch(() => {});
 }
 $("#reloadBtn").addEventListener("click", () => location.reload());
+// When a new version takes over, reload once so the page and its code always match.
+if ("serviceWorker" in navigator){
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded){ reloaded = true; location.reload(); } });
+}
 
 /* ---------- wiring ---------- */
 $("#camBtn").addEventListener("click", startCamera);
