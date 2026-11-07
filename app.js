@@ -299,23 +299,36 @@ async function namePart(fragment, info, signal){
   return { evidence, named };
 }
 
-/* Step 2: with the poem's real title, look for ITS recordings (ShiaVoice and YouTube together). */
+/* Step 2: with the poem's real title, look for ITS recordings.
+   Audio: ShiaVoice (a Husayni library). Video: YouTube, but only complete performances of this poem. */
+function videoFits(v, title, reciter){
+  if (v.verdict === "short" || v.verdict === "bad") return false;   // clips, reels, songs, unrelated videos
+  const t = M.compact(title), vt = M.compact(v.title);
+  const titleOk = (t.length >= 4 && vt.includes(t)) || M.fuzzyContains(vt, t) >= 0.82 || v.score >= 0.9;
+  if (!titleOk) return false;
+  const r = M.poetKey(reciter || "");
+  const byReciter = r.length >= 4 && M.poetKey(v.title + " " + v.channel + " " + (v.desc || "").slice(0, 300)).includes(r);
+  if (v.verdict === "unknown" && !byReciter) return false;     // nothing says it is a Husayni recitation
+  if (r.length >= 4 && !byReciter && v.score < 0.95) return false;
+  return true;
+}
 async function findRecordings(poem, evidence, named, signal, onPart){
   const title = poem.title, reciter = (poem.reciters || [])[0] || "";
-  const t = M.compact(title);
-  const evHits = (evidence || []).filter((v, i) => (named && named.matches && named.matches.includes(i + 1)) || (t.length >= 5 && M.compact(v.title).includes(t)));
+  const full = named && named.full ? new Set(named.full) : null;
+  const matched = new Set((named && named.matches) || []);
+  // From the first search: what Gemini confirmed is this poem, performed in full.
+  const evHits = (evidence || []).filter((v, i) => matched.has(i + 1) && (!full || full.has(i + 1)) && v.verdict !== "short" && v.verdict !== "bad");
   const out = { sv: [], yt: [] };
   const merge = () => {
-    const seen = new Set(), list = [];
-    for (const x of out.sv) list.push(svRec(x));
-    for (const v of [...evHits, ...out.yt]) { if (seen.has(v.id)) continue; seen.add(v.id); const good = evHits.includes(v) || v.score >= 0.75; if (good || list.filter((r) => r.type === "youtube").length < 2) list.push(ytRec(v, good)); }
-    return list.slice(0, 12);
+    const seen = new Set(), list = out.sv.map(svRec);
+    for (const v of [...evHits, ...out.yt]) { if (seen.has(v.id)) continue; seen.add(v.id); list.push(ytRec(v, true)); }
+    return list.slice(0, 10);
   };
   const ytP = S.hasYouTube() ? S.findVideos({ title, reciter, poet: poem.poet || "", queries: [], verses: [], refrain: poem.refrain || "", opening: poem.opening || "" }, signal, { max: 1, noExtra: true })
-    .then((v) => { out.yt = v.filter((x) => x.score >= 0.6); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
+    .then((v) => { out.yt = v.filter((x) => videoFits(x, title, reciter)).slice(0, 5); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
   const svP = window.QSources && QSources.available() ? QSources.findShiavoice({ title, opening: poem.opening || "", refrain: poem.refrain || "", reciter, queries: [], verses: [] }, signal)
     .then((x) => { out.sv = x; onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
-  onPart && evHits.length && onPart(merge());
+  if (onPart && evHits.length) onPart(merge());
   await Promise.all([ytP, svP]);
   return merge();
 }

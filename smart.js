@@ -132,7 +132,7 @@
      The results are the evidence: video titles usually carry the poem's title and reciter,
      and descriptions often carry the verses and the poet. */
   async function namePoem(fragment, videos, signal) {
-    const list = (videos || []).slice(0, 8).map((v, i) => (i + 1) + ") العنوان: " + v.title + " | القناة: " + v.channel + " | الوصف: " + String(v.desc || "").replace(/\s+/g, " ").slice(0, 220)).join("\n");
+    const list = (videos || []).slice(0, 8).map((v, i) => (i + 1) + ") العنوان: " + v.title + " | القناة: " + v.channel + (v.dur ? " | المدة: " + Math.round(v.dur / 60) + " دقيقة" : "") + " | الوصف: " + String(v.desc || "").replace(/\s+/g, " ").slice(0, 220)).join("\n");
     const prompt = `المستخدم يتذكر جزءاً من قصيدة حسينية (لطمية أو نعي أو قصيدة) ويريد معرفة القصيدة الأصلية:
 «${String(fragment).slice(0, 400)}»
 ${list ? "وهذه نتائج بحث حقيقية في يوتيوب عن هذا الجزء:\n" + list + "\n" : ""}
@@ -142,14 +142,16 @@ ${list ? "وهذه نتائج بحث حقيقية في يوتيوب عن هذا 
 - reciter: الرادود إن ظهر في النتائج، وإلا "".
 - opening: مطلع القصيدة إن عرفته.
 - matches: أرقام النتائج التي هي هذه القصيدة نفسها فعلاً (لا قصائد أخرى تشبهها).
+- full: من بين matches، أرقام النتائج التي هي أداء كامل للقصيدة بصوت رادود أو منشد (لطمية أو نعي أو قصيدة أو نشيد)، لا مقتطفاً قصيراً ولا «حالات» ولا تصميماً ولا أغنية ولا فيديو آخر.
 - confidence: high إن اتفقت النتائج بوضوح، medium إن كان مرجّحاً، low إن كان تخميناً.
 لا تخترع؛ إن لم تعرف القصيدة ولم تدلّ النتائج عليها فاجعل title فارغاً.
-أجب بكائن JSON واحد فقط: {"title":"","poet":"","reciter":"","opening":"","matches":[1],"confidence":"high|medium|low"}`;
+أجب بكائن JSON واحد فقط: {"title":"","poet":"","reciter":"","opening":"","matches":[1],"full":[1],"confidence":"high|medium|low"}`;
     const d = await run([{ text: prompt }], signal, 512);
     const n = (videos || []).length;
     return {
       title: str(d.title, 120), poet: str(d.poet, 120), reciter: str(d.reciter, 80), opening: str(d.opening, 200),
       matches: (Array.isArray(d.matches) ? d.matches : []).map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= n),
+      full: Array.isArray(d.full) ? d.full.map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= n) : null,
       confidence: /^(high|medium|low)$/.test(d.confidence) ? d.confidence : "low"
     };
   }
@@ -209,16 +211,44 @@ ${list ? "وهذه نتائج بحث حقيقية في يوتيوب عن هذا 
   async function ytSearch(q, signal) {
     const cache = ls.get(LS_YTCACHE, {});
     const ck = M.compact(q);
-    if (cache[ck] && Date.now() - cache[ck].t < 7 * 864e5) return cache[ck].items;
+    if (cache[ck] && Date.now() - cache[ck].t < 7 * 864e5 && cache[ck].items.every((x) => x.verdict)) return cache[ck].items;
     const url = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&relevanceLanguage=ar&q=" + encodeURIComponent(q) + "&key=" + encodeURIComponent(ytKey());
     const j = await fetchJSON(url, { signal }, 15000);
-    const items = (j.items || []).filter((it) => it.id && it.id.videoId).map((it) => ({
+    let items = (j.items || []).filter((it) => it.id && it.id.videoId).map((it) => ({
       id: it.id.videoId, title: decodeEntities(it.snippet.title), channel: decodeEntities(it.snippet.channelTitle), desc: decodeEntities(it.snippet.description || "")
     }));
+    // Length and full description (1 quota unit for all of them) so short clips, reels and songs can be told apart.
+    try {
+      const d = await fetchJSON("https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet&id=" + items.map((x) => x.id).join(",") + "&key=" + encodeURIComponent(ytKey()), { signal }, 6000);
+      const byId = new Map((d.items || []).map((x) => [x.id, x]));
+      items = items.map((v) => {
+        const x = byId.get(v.id); if (!x) return v;
+        return { ...v, dur: isoSeconds(x.contentDetails && x.contentDetails.duration), live: (x.snippet && x.snippet.liveBroadcastContent) !== "none",
+          desc: decodeEntities((x.snippet && x.snippet.description) || v.desc).slice(0, 1500), tags: ((x.snippet && x.snippet.tags) || []).slice(0, 25).join(" ") };
+      });
+    } catch (e) { if (e.code === "cancelled") throw e; }
+    items = items.map((v) => ({ ...v, verdict: judge(v) }));
     const c2 = ls.get(LS_YTCACHE, {}); c2[ck] = { t: Date.now(), items };
     const ks = Object.keys(c2); if (ks.length > 80) for (const k of ks.slice(0, ks.length - 80)) delete c2[k];
     ls.set(LS_YTCACHE, c2);
     return items;
+  }
+  function isoSeconds(d) {
+    const m = String(d || "").match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return 0;
+    return (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0);
+  }
+  // Words that mark what we do not want, and words that mark Husayni recitations.
+  const BAD = /(اغني|أغني|اغاني|أغاني|كليب|موسيق|حفله|حفلة|ريمكس|remix|#?shorts?\b|reels?\b|ريلز|ستوري|ستوريات|حالات|حاله واتس|حالة واتس|واتساب|whatsapp|تيك ?توك|tiktok|تصميم|ردة فعل|reaction|كاريوكي|karaoke|ترند|مقطع قصير|اسمع للنهاية)/i;
+  const GOOD = /(لطمي|نعي|قصيد|رادود|الملا|ملا |كربلائ|الحلفي|الاكرف|الأكرف|البديري|الخاقاني|العبودي|الجلاوي|الساعدي|الفلي|البهادلي|القطري|محرم|عاشور|اربعين|أربعين|موكب|حسين|العباس|زينب|كربلا|اهل البيت|أهل البيت|الزهراء|فاطمه|فاطمة|الامام|الإمام|نشيد|انشود|أنشود|مولد|ولاده|ولادة|استشهاد|وفاه|وفاة|عزاء|هيئه|هيئة|حسينيه|حسينية|رثاء)/;
+  /* "ok" = a full Husayni recitation is likely; "short" = a clip or reel; "bad" = a song or unrelated video. */
+  function judge(v) {
+    const text = v.title + " " + v.desc + " " + (v.tags || "") + " " + v.channel;
+    if (v.live) return "bad";
+    if (v.dur && v.dur < 150) return "short";
+    if (BAD.test(v.title) || BAD.test(v.tags || "")) return BAD.test(v.title + " " + (v.tags || "")) && !GOOD.test(v.title) ? "bad" : (v.dur && v.dur < 240 ? "short" : "ok");
+    if (!GOOD.test(text)) return "unknown"; // no sign either way: allowed only when the reciter matches
+    return "ok";
   }
   function rankVideo(v, info) {
     const hay = M.compact(v.title + " " + v.desc + " " + v.channel);
