@@ -142,6 +142,37 @@
     };
   }
 
+  /* ---------- ShiaVoice search page read by Gemini (used only when no search proxy is set) ---------- */
+  async function readShiavoiceSearch(q, signal) {
+    const key = keys().gemini;
+    if (!key) throw new SmartError("no_key");
+    const url = "https://shiavoice.com/search?q=" + encodeURIComponent(q);
+    const prompt = "افتح هذه الصفحة: " + url + "\nهي نتائج بحث في موقع صوت الشيعة. استخرج المقاطع الصوتية الظاهرة فيها فقط: لكل مقطع العنوان واسم المنشد والمدة والمعرّف (الحروف بعد play- في رابطه، مثل TsS73). لا تخترع شيئاً؛ إن لم تتمكن من فتح الصفحة فأعد قائمة فارغة.\nأجب بكائن JSON واحد فقط: {\"items\":[{\"id\":\"\",\"title\":\"\",\"artist\":\"\",\"duration\":\"\"}]}";
+    const cached = ls.get(LS_MODEL, null);
+    const models = [...new Set([cached && cached.model, ...FAST, ...SMART].filter(Boolean))].slice(0, 4);
+    let lastErr = null;
+    for (const model of models) {
+      try {
+        const j = await fetchJSON(GEMINI + "/models/" + encodeURIComponent(model) + ":generateContent", {
+          method: "POST", headers: { "x-goog-api-key": key, "Content-Type": "application/json" }, signal,
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ url_context: {} }], generationConfig: { temperature: 0, maxOutputTokens: 2048 } })
+        }, 30000);
+        const cand = (j.candidates || [])[0] || {};
+        const meta = cand.urlContextMetadata || cand.url_context_metadata || {};
+        const list = meta.urlMetadata || meta.url_metadata || [];
+        const ok = list.some((m) => /SUCCESS/.test(String(m.urlRetrievalStatus || m.url_retrieval_status || "")));
+        if (!ok) return []; // the page was not actually read: never trust ids that were not seen
+        const text = ((cand.content || {}).parts || []).filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("");
+        const data = parseLoose(text);
+        return data && Array.isArray(data.items) ? data.items : [];
+      } catch (e) {
+        lastErr = e;
+        if (["bad_key", "cancelled", "offline", "region", "quota"].includes(e.code)) throw e;
+      }
+    }
+    throw lastErr || new SmartError("failed");
+  }
+
   /* ---------- YouTube ---------- */
   function decodeEntities(s) { const t = document.createElement("textarea"); t.innerHTML = s || ""; return t.value; }
   async function ytSearch(q, signal) {
@@ -208,5 +239,5 @@
     return out;
   }
 
-  root.QSmart = { keys, saveKeys, ready, hasYouTube: () => !!ytKey(), identify, findVideos, test, mode, setMode, SmartError };
+  root.QSmart = { keys, saveKeys, ready, hasYouTube: () => !!ytKey(), identify, findVideos, readShiavoiceSearch, test, mode, setMode, SmartError };
 })(self);
