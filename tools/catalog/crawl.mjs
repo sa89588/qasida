@@ -95,12 +95,12 @@ export async function main() {
   if (state.done) state.lastRun = Date.now();
   await fs.writeFile(tracksFile, JSON.stringify(all));
   await fs.writeFile(stateFile, JSON.stringify(state));
-  await writeShards(all);
+  await writeShards(all, state.done || !!state.lastRun);
   console.log(`done=${state.done} next=${state.next} tracks=${Object.keys(all.tracks).length} fetched=${fetched}`);
 }
 
 /* The app downloads one small file per section. Each row: [id, title, artistIndex, seconds, album]. */
-async function writeShards(all) {
+async function writeShards(all, complete) {
   const sectionOf = (cat) => {
     let c = all.cats[cat], guard = 0;
     while (c && !c[1] && c[2] && guard++ < 6) c = all.cats[c[2]];
@@ -115,7 +115,7 @@ async function writeShards(all) {
     if (!b.albums[cat]) b.albums[cat] = (all.cats[cat] || [""])[0];
     b.rows.push([id, title, b.aIdx.get(artist), dur, +cat]);
   }
-  const manifest = { updated: new Date().toISOString(), sections: {} };
+  const manifest = { updated: new Date().toISOString(), complete: !!complete, sections: {} };
   for (const [s, b] of Object.entries(by)) {
     const file = `sv-${s}.json`;
     await fs.writeFile(path.join(OUT, file), JSON.stringify({ section: s, artists: b.artists, albums: b.albums, rows: b.rows }));

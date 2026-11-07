@@ -84,7 +84,7 @@ async function loadCatalog(force) {
   ]);
   const manifest = fresh || store.get("manifest", null);
   if (fresh) store.set("manifest", fresh);
-  catalog.manifest = manifest; catalog.updated = manifest?.updated || null;
+  catalog.manifest = manifest; catalog.updated = manifest?.updated || null; catalog.partial = !!manifest && manifest.complete === false;
   const shards = [];
   const want = chosen(manifest);
   let i = 0;
@@ -102,7 +102,8 @@ async function loadCatalog(force) {
   work(null);
   worker.postMessage({ type: "load", shards, poems: poemsDoc.poems || [] });
   await ready;
-  if (!manifest) status("فهرس صوت الشيعة لم يُنشر بعد — يعمل الآن فهرس الكتاب فقط. سيكتمل خلال ساعات.");
+  if (!manifest) status("فهرس صوت الشيعة يُجمع الآن ولم يصل بعد — البحث الآن في قصائد الكتاب فقط.");
+  else if (catalog.partial) status(`الفهرس ما زال يُجمع: على هاتفك ${recCount(catalog.tracks)} حتى الآن.`);
   else status("");
 }
 
@@ -222,7 +223,7 @@ async function search(text) {
   const out = list.slice(); out.list = list; return out;
 }
 async function runSearch(text, typed) {
-  status("");
+  if (catalog.manifest && !catalog.partial) status("");
   work("أبحث في الفهرس…");
   try {
     if (typed) { const res = await ask(text, true); work(null); render(res.results, text, true, res.artist); }
@@ -241,6 +242,8 @@ function render(list, text, typed, artist) {
     const q = typed ? text : QMatch.guessTitle(text) || text.slice(0, 60);
     box.append(el("div", { class: "card empty" },
       el("h2", {}, "لم أجد القصيدة في الفهرس"),
+      !catalog.manifest ? el("p", { class: "warnline" }, "فهرس صوت الشيعة يُجمع الآن ولم يصل إلى هاتفك بعد، فالبحث الآن في قصائد الكتاب فقط. يصل أول جزء منه خلال ساعة تقريباً ويكتمل خلال يوم؛ أعد فتح التطبيق لاحقاً.") :
+        catalog.partial ? el("p", { class: "warnline" }, `الفهرس ما زال يُجمع (${ar(catalog.tracks)} تسجيلاً حتى الآن)؛ قد تكون القصيدة في جزء لم يصل بعد.`) : null,
       el("p", { class: "muted" }, typed ? "جرّب عنوان القصيدة أو مطلعها، أو اسم الرادود." : "صحّح العنوان في مربع «قرأت من الصفحة» ثم أعد البحث، أو صوّر الصفحة أقرب إلى العنوان."),
       artist ? el("p", {}, "يبدو أنك تبحث عن الرادود ", el("strong", {}, artist.name), ". ",
         el("a", { href: "https://shiavoice.com/search?q=" + encodeURIComponent(artist.name), target: "_blank", rel: "noopener" }, "تسجيلاته في صوت الشيعة ↗")) : null,
@@ -358,4 +361,9 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js?v=1", { scope: "./" }).catch(() => {});
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (had) location.reload(); });
 }
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !(catalog.partial || !catalog.manifest)) return;
+  const m = await fetchData("manifest.json", true);
+  if (m && m.updated !== catalog.updated) { store.set("manifest", m); location.reload(); }
+});
 loadCatalog(false).catch(() => { status("تعذّر تحميل الفهرس. تحقق من الاتصال ثم أعد فتح التطبيق.", true); worker.postMessage({ type: "load", shards: [], poems: [] }); });
