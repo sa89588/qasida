@@ -61,6 +61,7 @@ export async function main() {
 
   // Highest album number right now, from the newest albums on the home page.
   const home = await get(BASE + "/");
+  if (!home) throw new Error("home page unreachable — not touching the catalog");
   const newest = home ? Math.max(0, ...[...home.matchAll(/href="\/cat-(\d+)"/g)].map((m) => +m[1])) : 0;
   const target = Math.max(newest, state.maxSeen);
   // After the first full pass, only walk the new albums (and re-check the last 300).
@@ -90,6 +91,7 @@ export async function main() {
     if (fetched % 200 === 0) { await fs.writeFile(tracksFile, JSON.stringify(all)); await fs.writeFile(stateFile, JSON.stringify(state)); console.log(`cat ${n}/${target}, tracks ${Object.keys(all.tracks).length}`); }
     await sleep(DELAY_MS);
   }
+  if (state.done && !Object.keys(all.tracks).length) state.done = false;   // nothing read: never call that finished
   if (state.done) state.lastRun = Date.now();
   await fs.writeFile(tracksFile, JSON.stringify(all));
   await fs.writeFile(stateFile, JSON.stringify(state));
