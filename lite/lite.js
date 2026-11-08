@@ -3,19 +3,10 @@
    No API keys, no accounts. Nothing autoplays: every recording has its own play button. */
 "use strict";
 const $ = (s, r = document) => r.querySelector(s);
-const DATA = ["https://raw.githubusercontent.com/sa89588/qasida/data/", "https://cdn.jsdelivr.net/gh/sa89588/qasida@data/"];
-const SECTIONS = {
-  letmiat: ["لطميات", true], qesaed: ["قصائد", true], enashid: ["أناشيد", true], afrah: ["مواليد وأفراح", true],
-  zeyarat: ["زيارات", true], ed3ie: ["أدعية", true], other: ["أخرى", true],
-  mohadrat: ["محاضرات", false], khotab: ["خطب", false], quran: ["القرآن الكريم", false], athan: ["أذان", false],
-  hawza: ["دروس حوزوية", false], kutub: ["كتب صوتية", false]
-};
+const { SECTIONS, store, fetchData, chosen, ask } = QLib;
+const catalog = QLib.info;
 const ar = (n) => QMatch.toArabicDigits(Number(n).toLocaleString("en-US")).replace(/,/g, "٬");
 const recCount = (n) => n === 1 ? "تسجيل واحد" : n === 2 ? "تسجيلان" : n <= 10 ? ar(n) + " تسجيلات" : ar(n) + " تسجيلاً";
-const store = {
-  get(k, d) { try { const v = localStorage.getItem("lite." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem("lite." + k, JSON.stringify(v)); } catch {} }
-};
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -32,77 +23,12 @@ function work(t, pct) {
   $("#workP").parentElement.hidden = pct == null;
 }
 
-/* ---------- saved catalog (IndexedDB) ---------- */
-const idb = (() => {
-  let dbp;
-  const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open("qasida-lite", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("shards");
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-  }));
-  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("shards", mode); const q = fn(t.objectStore("shards")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
-  return { get: (k) => tx("readonly", (s) => s.get(k)).catch(() => null), put: (k, v) => tx("readwrite", (s) => s.put(v, k)).catch(() => {}),
-           del: (k) => tx("readwrite", (s) => s.delete(k)).catch(() => {}) };
-})();
-
-async function fetchData(name, fresh) {
-  for (const base of DATA) {
-    try {
-      const r = await fetch(base + name + (fresh ? "?t=" + Date.now() : ""), { cache: fresh ? "no-store" : "default" });
-      if (r.ok) return await r.json();
-    } catch {}
-  }
-  return null;
-}
-
-/* ---------- search worker ---------- */
-const worker = new Worker("search-worker.js?v=1");
-let qid = 0; const pending = new Map();
-let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
-let catalog = { tracks: 0, updated: null, manifest: null };
-worker.onmessage = (ev) => {
-  const m = ev.data;
-  if (m.type === "ready") { catalog.tracks = m.tracks; readyResolve(); showCatalog(); }
-  else if (m.type === "result" || m.type === "error") { const p = pending.get(m.id); pending.delete(m.id); p && (m.type === "error" ? p.reject(new Error(m.message)) : p.resolve(m)); }
-};
-async function ask(text, typed) {
-  await ready;
-  const id = ++qid;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); worker.postMessage({ type: "query", id, text, typed }); });
-}
-
-function chosen(manifest) {
-  const saved = store.get("sections", null);
-  return Object.keys(manifest?.sections || {}).filter((s) => saved ? saved.includes(s) : (SECTIONS[s]?.[1] ?? true));
-}
-
 async function loadCatalog(force) {
   status("أجهّز الفهرس…");
-  const [poemsDoc, fresh] = await Promise.all([
-    fetch("../poems.json?v=13").then((r) => r.json()).catch(() => ({ poems: [] })),
-    fetchData("manifest.json", true)
-  ]);
-  const manifest = fresh || store.get("manifest", null);
-  if (fresh) store.set("manifest", fresh);
-  catalog.manifest = manifest; catalog.updated = manifest?.updated || null; catalog.partial = !!manifest && manifest.complete === false;
-  const shards = [];
-  const want = chosen(manifest);
-  let i = 0;
-  for (const s of want) {
-    const info = manifest.sections[s];
-    let saved = await idb.get(info.file);
-    if (!saved || saved.updated !== manifest.updated || force) {
-      work(`أنزّل قسم ${SECTIONS[s]?.[0] || s}…`, i / want.length);
-      const data = await fetchData(info.file, force);
-      if (data) { saved = { updated: manifest.updated, data }; await idb.put(info.file, saved); }
-    }
-    if (saved) shards.push(saved.data);
-    i++;
-  }
+  await QLib.load(force, (t, p) => work(t, p));
   work(null);
-  worker.postMessage({ type: "load", shards, poems: poemsDoc.poems || [] });
-  await ready;
-  if (!manifest) status("فهرس صوت الشيعة يُجمع الآن ولم يصل بعد — البحث الآن في قصائد الكتاب فقط.");
+  showCatalog();
+  if (!catalog.manifest) status("فهرس صوت الشيعة يُجمع الآن ولم يصل بعد — البحث الآن في قصائد الكتاب فقط.");
   else if (catalog.partial) status(`الفهرس ما زال يُجمع: على هاتفك ${recCount(catalog.tracks)} حتى الآن.`);
   else status("");
 }
@@ -110,7 +36,7 @@ async function loadCatalog(force) {
 function showCatalog() {
   const m = catalog.manifest;
   $("#catInfo").textContent = m
-    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
+    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة` + (catalog.poems ? ` و${ar(catalog.poems)} قصيدة يُبحث في كلماتها` : "") + ` — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
     : "فهرس صوت الشيعة غير متاح بعد؛ يعمل فهرس الكتاب وحده.";
   const list = $("#secList"); list.replaceChildren();
   const on = new Set(chosen(m));
@@ -265,7 +191,8 @@ function card(r, open) {
     el("h2", { class: "ptitle" }, p ? p.title : r.title),
     el("div", { class: "meta" },
       el("span", { class: "chip " + conf[1] }, conf[0]),
-      p?.poet ? el("span", {}, "كلمات: " + p.poet) : null,
+      p?.poet ? el("span", {}, "كلمات: " + p.poet) : r.lyric?.poet ? el("span", {}, "كلمات: " + r.lyric.poet) : null,
+      !top && r.lyric?.reciter ? el("span", {}, "بصوت: " + r.lyric.reciter) : null,
       top?.artist ? el("span", {}, (p ? "بصوت: " : "") + [...new Set(r.recs.map((x) => x.artist))].slice(0, 3).join("، ")) : null,
       el("span", { class: "muted" }, recCount(r.total + (p?.recordings?.filter((x) => x.type === "audio").length || 0)))));
   const body = el("div", { class: "rbody" });
@@ -275,13 +202,16 @@ function card(r, open) {
   const shown = r.recs.slice(0, 6);
   for (const x of shown) recList.append(svRow(x));
   body.append(recList);
+  if (!r.recs.length && !(p?.recordings || []).length)
+    body.append(el("p", { class: "muted small" }, "لم أجد تسجيلاً بهذا العنوان في فهرس صوت الشيعة — جرّب «المزيد في صوت الشيعة» أو يوتيوب."));
   if (r.recs.length > shown.length) {
     const more = el("button", { class: "btn ghost small", type: "button", onclick: () => { for (const x of r.recs.slice(shown.length)) recList.append(svRow(x)); more.remove(); } },
       `عرض كل التسجيلات (${ar(r.recs.length)})`);
     body.append(more);
   }
-  const q = (p ? p.title : r.title) + (top?.artist ? " " + top.artist : "");
+  const q = (p ? p.title : r.title) + (top?.artist ? " " + top.artist : r.lyric?.reciter ? " " + r.lyric.reciter : "");
   body.append(el("div", { class: "row side" },
+    r.lyric ? el("a", { class: "btn ghost small", href: r.lyric.url, target: "_blank", rel: "noopener" }, "اقرأ الكلمات ↗") : null,
     el("a", { class: "btn ghost small", href: yt(q), target: "_blank", rel: "noopener" }, "فيديو على يوتيوب ↗"),
     el("a", { class: "btn ghost small", href: "https://shiavoice.com/search?q=" + encodeURIComponent(p ? p.title : r.title), target: "_blank", rel: "noopener" }, "المزيد في صوت الشيعة ↗")));
   if (open) return el("article", { class: "card result" }, head, body);
@@ -377,4 +307,4 @@ document.addEventListener("visibilitychange", async () => {
   const m = await fetchData("manifest.json", true);
   if (m && m.updated !== catalog.updated) { store.set("manifest", m); location.reload(); }
 });
-loadCatalog(false).catch(() => { status("تعذّر تحميل الفهرس. تحقق من الاتصال ثم أعد فتح التطبيق.", true); worker.postMessage({ type: "load", shards: [], poems: [] }); });
+loadCatalog(false).catch(() => { work(null); status("تعذّر تحميل الفهرس. تحقق من الاتصال ثم أعد فتح التطبيق.", true); });

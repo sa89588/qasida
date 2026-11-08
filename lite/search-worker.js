@@ -2,8 +2,9 @@
    Holds the ShiaVoice catalog (titles, reciters, albums — no lyrics) and the book index,
    and finds which poem a page photo or a typed fragment belongs to. Runs off the main thread. */
 "use strict";
-if (typeof importScripts === "function") importScripts("../match.js?v=13");
+if (typeof importScripts === "function") importScripts("../match.js?v=13", "words.js?v=1");
 const M = typeof QMatch !== "undefined" ? QMatch : require("../match.js");
+const Wd = typeof QWords !== "undefined" ? QWords : require("./words.js");
 
 /* How much each section counts when several fit equally well: Husayni poetry first. */
 const SECTION_WEIGHT = { letmiat: 1, qesaed: 0.99, enashid: 0.95, afrah: 0.93, zeyarat: 0.9, ed3ie: 0.9, other: 0.9,
@@ -21,6 +22,9 @@ let lens = null;           // trigram count of each entry key
 let artists = [];          // per shard
 let shardInfo = [];        // [{section, artists, albums}]
 let book = [];             // poems.json entries (curated, with Rafed audio)
+let keyIndex = new Map();  // title key -> entry index
+/* Poem words (hashed): which poem contains these words? */
+let lyr = [], lyrPost = new Map(), lyrIdf = new Map(), lyrMass = [], lyrByTitle = new Map();
 
 function cleanTitle(title, artist) {
   let t = String(title || "").replace(/\([^)]*\)|\[[^\]]*\]|«|»/g, " ");
@@ -51,6 +55,7 @@ function build(shards, poems) {
       e.weight = Math.max(e.weight, SECTION_WEIGHT[sh.section] ?? 0.85);
     }
   });
+  keyIndex = new Map(entries.map((e, i) => [e.key, i]));
   // Inverted index on character trigrams of each title key.
   const tmp = new Map();
   lens = new Uint16Array(entries.length);
@@ -61,6 +66,66 @@ function build(shards, poems) {
   post = new Map();
   for (const [t, a] of tmp) post.set(t, Int32Array.from(a));
   return { entries: entries.length, tracks };
+}
+
+function buildLyrics(doc) {
+  lyr = (doc && doc.poems || []).map((p) => ({ title: p[0], reciter: p[1], poet: p[2], url: p[3], h: p[4] ? p[4].split(" ") : [] }));
+  const tmp = new Map();
+  lyr.forEach((p, i) => { for (const h of p.h) { let a = tmp.get(h); if (!a) tmp.set(h, a = []); a.push(i); } });
+  const N = lyr.length || 1;
+  lyrPost = new Map(); lyrIdf = new Map();
+  for (const [h, a] of tmp) { lyrPost.set(h, Int32Array.from(a)); lyrIdf.set(h, Math.log(1 + N / a.length)); }
+  lyrMass = lyr.map((p) => p.h.reduce((sum, h) => sum + lyrIdf.get(h), 0));
+  lyrByTitle = new Map(lyr.map((p, i) => [M.compact(p.title), i]));
+  return lyr.length;
+}
+
+/* Words typed, spoken or read from a page → poems that contain them.
+   Rare words count more than common ones (each word weighs log(1 + N/df)). */
+function searchLyrics(text, typed) {
+  if (!lyr.length) return [];
+  const q = [...new Set(Wd.words(text).map(Wd.hash))];
+  if (!q.length) return [];
+  const unknown = Math.log(1 + lyr.length);
+  let qMass = 0;
+  const mass = new Map(), count = new Map();
+  for (const h of q) {
+    const w = lyrIdf.get(h) ?? unknown; qMass += w;
+    const a = lyrPost.get(h); if (!a) continue;
+    for (const i of a) { mass.set(i, (mass.get(i) || 0) + w); count.set(i, (count.get(i) || 0) + 1); }
+  }
+  const out = [];
+  for (const [i, m] of mass) {
+    const n = count.get(i), cov = m / Math.min(qMass, lyrMass[i] || qMass);
+    let s = 0;
+    if (!typed) { if (n >= 5 && cov >= 0.3) s = 0.55 + 0.45 * Math.min(1, cov / 0.6); }
+    else if (q.length === 1) s = 0.72;                                  // one word: every poem that has it
+    else if (q.length <= 3) { if (n === q.length) s = 0.82; else if (n >= 2 && cov >= 0.6) s = 0.7; }
+    else if (n >= 3 && cov >= 0.55) s = 0.55 + 0.45 * Math.min(1, cov);
+    if (s) out.push({ i, s, cov });
+  }
+  out.sort((a, b) => b.s - a.s || b.cov - a.cov);
+  return out.slice(0, 40);
+}
+
+/* The catalog entry (recordings) for a title: exact key first, then a close or longer spelling
+   (catalog titles often carry the whole first line), preferring one sung by the same reciter. */
+function entryFor(title, reciter) {
+  const k = cleanTitle(title).replace(/\s+/g, "");
+  if (keyIndex.has(k)) return keyIndex.get(k);
+  const c = M.compact(title);
+  if (keyIndex.has(c)) return keyIndex.get(c);
+  const rk = M.poetKey(reciter || "");
+  let best = -1, bestS = 0;
+  for (const { i } of searchTyped(title)) {
+    const key = entries[i].key;
+    const close = M.dice(c, key) >= 0.86 || (Math.min(c.length, key.length) >= 6 && (key.startsWith(c) || c.startsWith(key)));
+    if (!close) continue;
+    let s = M.dice(c, key);
+    if (rk.length >= 4 && entries[i].recs.some((ref) => M.dice(M.poetKey(rec(ref).artist), rk) >= 0.8)) s += 1;
+    if (s > bestS) { bestS = s; best = i; }
+  }
+  return best;
 }
 
 function rec(ref) {
@@ -150,28 +215,45 @@ function query(text, typed) {
   // Curated book poems first when they fit: they carry poet, books and Rafed audio.
   const bm = book.map((p) => ({ p, s: M.scorePoem(p, text, typed) })).filter((x) => x.s >= 0.62).sort((a, b) => b.s - a.s).slice(0, 3);
   for (const { p, s } of bm) {
-    const keys = [p.title].concat(p.aliases || []).map((t) => cleanTitle(t).replace(/\s+/g, ""));
     const recs = [];
-    for (const k of keys) {
-      const idx = entries.findIndex((e) => e.key === k);
-      if (idx >= 0 && !seen.has(idx)) { seen.add(idx); for (const ref of entries[idx].recs) recs.push(rec(ref)); }
+    for (const t of [p.title].concat(p.aliases || [])) {
+      const idx = keyIndex.get(cleanTitle(t).replace(/\s+/g, ""));
+      if (idx != null && !seen.has(idx)) { seen.add(idx); for (const ref of entries[idx].recs) recs.push(rec(ref)); }
     }
     results.push({ title: p.title, score: Math.min(1, s + 0.05), book: p, recs: sortRecs(recs, text).slice(0, 60), total: recs.length });
   }
+  // Poems whose words contain what was typed or read: the original poem, then its recordings by title.
+  const lyrSeen = new Set();
+  for (const { i, s } of searchLyrics(text, typed)) {
+    const L = lyr[i];
+    const tk = M.compact(L.title);
+    if (lyrSeen.has(tk)) continue; lyrSeen.add(tk);
+    const idx = entryFor(L.title, L.reciter);
+    let recs = [];
+    if (idx >= 0) { if (seen.has(idx)) continue; seen.add(idx); recs = entries[idx].recs.map(rec); }
+    results.push({ title: L.title, score: Math.min(1, s), lyric: { url: L.url, poet: L.poet, reciter: L.reciter },
+      recs: sortRecs(recs, text + " " + L.reciter).slice(0, 60), total: recs.length });
+    if (results.length >= 12) break;
+  }
   for (const { i, s } of found) {
+    if (results.length >= 14) break;
     if (seen.has(i)) continue;
     seen.add(i);
     const e = entries[i];
     const recs = e.recs.map(rec);
     results.push({ title: e.recs.length ? recs[0].title : e.title, key: e.key, score: Math.min(1, s), recs: sortRecs(recs, text).slice(0, 60), total: recs.length });
-    if (results.length >= 12) break;
+  }
+  // A title match whose poem text we also have: offer its words.
+  for (const r of results) if (!r.lyric && !r.book) {
+    const li = lyrByTitle.get(r.key) ?? lyrByTitle.get(M.compact(r.title));
+    if (li != null) r.lyric = { url: lyr[li].url, poet: lyr[li].poet, reciter: lyr[li].reciter };
   }
   // Display title: the most common original spelling among the recordings.
-  for (const r of results) if (!r.book && r.recs.length) {
+  for (const r of results) if (!r.book && !r.lyric && r.recs.length) {
     const count = new Map(); for (const x of r.recs) count.set(x.title, (count.get(x.title) || 0) + 1);
     r.title = [...count].sort((a, b) => b[1] - a[1])[0][0];
   }
-  return results;
+  return results.map((r, n) => [r, n]).sort((a, b) => b[0].score - a[0].score || a[1] - b[1]).map((x) => x[0]);
 }
 
 /* Recordings of one reciter (typed name). */
@@ -190,10 +272,10 @@ if (typeof self !== "undefined" && typeof module === "undefined") {
   self.onmessage = (ev) => {
     const m = ev.data;
     try {
-      if (m.type === "load") { SHARDS = m.shards; const info = build(m.shards, m.poems); self.postMessage({ type: "ready", ...info }); }
+      if (m.type === "load") { SHARDS = m.shards; const info = build(m.shards, m.poems); info.poems = buildLyrics(m.lyrics); self.postMessage({ type: "ready", ...info }); }
       else if (m.type === "query") { const results = query(m.text, m.typed); const artist = m.typed ? byArtist(m.text) : null; self.postMessage({ type: "result", id: m.id, results, artist }); }
     } catch (e) { self.postMessage({ type: "error", id: m.id, message: String(e && e.message || e) }); }
   };
 } else {
-  module.exports = { build: (s, p) => { SHARDS = s; return build(s, p); }, query, cleanTitle, byArtist };
+  module.exports = { build: (s, p, l) => { SHARDS = s; const r = build(s, p); r.poems = buildLyrics(l); return r; }, query, cleanTitle, byArtist, searchLyrics };
 }

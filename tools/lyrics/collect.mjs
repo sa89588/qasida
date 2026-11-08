@@ -44,6 +44,18 @@ async function knownReciters() {
   }
   return [...names].sort((a, b) => b[0].length - a[0].length);
 }
+/* "- الرادود محمد الجنامي ." → "محمد الجنامي" */
+export function cleanName(s) {
+  let t = String(s || "").replace(/[()«»"]/g, " ").replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 3; i++) t = t.replace(/^[\s\-–—.:|،]+|[\s\-–—.:|،]+$/g, "").replace(/^(الرادود|الشاعر|كلمات|أداء|اداء|بصوت|للشاعر|الحاج)\s+/, "");
+  return t.trim();
+}
+/* The normalised title, written back in the source's own spelling (keeps ة, أ, …). */
+function originalSpelling(raw, n) {
+  const words = String(raw).replace(/[|\-–]/g, " ").split(/\s+/).filter(Boolean), k = n.split(" ").length;
+  for (let i = 0; i + k <= words.length; i++) if (M.norm(words.slice(i, i + k).join(" ")) === n) return words.slice(i, i + k).join(" ");
+  return n;
+}
 const TITLE_NOISE = /^(كلمات\s+)?(لطميه|قصيده|نعي|موشح|انشوده|نشيد|ردات|شور|فزاعيه|لطميات)\s+/;
 export function splitTitle(raw, reciters, hint) {
   let t = String(raw).replace(/\bمكتوب[هة]?\s*كامل[هة]?\b/g, "").replace(/\s+/g, " ").trim();
@@ -60,8 +72,7 @@ export function splitTitle(raw, reciters, hint) {
     if (at > 0 && n.length - at <= k.length + 1) { reciter = reciter || name; n = n.slice(0, at); break; }
   }
   n = n.replace(/\s+(الرادود|الحاج|الملا|السيد|الشيخ)$/, "").trim();
-  reciter = String(reciter).replace(/^(الرادود|الحاج)\s+/, "").trim();
-  return { title: n, reciter };
+  return { title: originalSpelling(t, n), reciter: cleanName(reciter) };
 }
 const BOILER = /درون العراق|مكتوب[هة]? كامل|كما يمكنكم|اشترك|تابعونا|حقوق|المزيد من القصائد|^كلمات (لطمي|قصيد)|^لطميه |^الكاتب|^التوزيع|^الهندس|^المكان|^اخراج|^تصوير|^ليله \d|^حسينيه/;
 
@@ -89,7 +100,7 @@ async function fromDoro(reciters) {
       const label = labels.find((l) => !/قصائد|شعر|دين|منوعات/.test(l)) || "";
       const t = splitTitle(title, reciters, reciter || label);
       const link = (e.link || []).find((l) => l.rel === "alternate")?.href;
-      if (body.length >= 6 && t.title.length >= 2 && link) out.push({ title: t.title, reciter: t.reciter, poet, url: link, body });
+      if (body.length >= 6 && t.title.length >= 2 && link) out.push({ title: t.title, reciter: t.reciter, poet: cleanName(poet), url: link, body });
     }
     await sleep(DELAY);
   }
