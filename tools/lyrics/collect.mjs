@@ -20,7 +20,7 @@ const M = require("../../match.js");
 const W = require("../../lite/words.js");
 
 const OUT = process.argv[2] || "data";
-const FORMAT = 3;
+const FORMAT = 4;   // 4: credits no longer taken from "كلمات قصيدة …" headings
 const UA = "qasida-reader-catalog/1.0 (+https://github.com/sa89588/qasida)";
 const DELAY = +(process.env.LYRICS_DELAY_MS ?? 1200);
 const BUDGET = +(process.env.LYRICS_MINUTES || 40) * 60000;
@@ -63,7 +63,7 @@ export function block(html, open) {
 /* ---------- names and titles ---------- */
 export function cleanName(s) {
   let t = String(s || "").replace(/[()«»"✒️🔷📜🎙🎤]/gu, " ").replace(/\s+/g, " ").trim();
-  for (let i = 0; i < 3; i++) t = t.replace(/^[\s\-–—.:|،]+|[\s\-–—.:|،]+$/g, "").replace(/^(الرادود|الشاعر|كلمات|أداء|اداء|بصوت|للشاعر|الحاج|الملا)\s+/, "");
+  for (let i = 0; i < 3; i++) t = t.replace(/^[\s\-–—.:|،\/\\*_~]+|[\s\-–—.:|،\/\\*_~]+$/g, "").replace(/^(الرادود|الشاعر|كلمات|أداء|اداء|بصوت|للشاعر|الحاج|الملا)\s+/, "");
   return t.split(/\s+/).slice(0, 6).join(" ").trim();
 }
 function originalSpelling(raw, n) {
@@ -73,7 +73,7 @@ function originalSpelling(raw, n) {
 }
 const TITLE_NOISE = /^(كلمات\s+)?(لطميه|قصيده|نعي|موشح|انشوده|نشيد|ردات|شور|فزاعيه|لطميات|اغنيه)\s+/;
 export function splitTitle(raw, reciters, hint) {
-  const t = String(raw).replace(/مكتوب[هة]?\s*كامل[هة]?/g, "").replace(/\s+/g, " ").trim();
+  const t = String(raw).replace(/مكتوب[هة]?\s*كامل[هة]?|\s+مكتوب[هة]?(?=\s|$)/g, "").replace(/\s+/g, " ").trim();
   let title = t, reciter = hint || "";
   const parts = t.split(/\s+[-|–]\s+|\s*\|\s*/);
   if (parts.length >= 2) { title = parts[0]; reciter = reciter || parts.slice(1).join(" "); }
@@ -112,6 +112,7 @@ export function readPoem(lines) {
     const m = l.match(META);
     if (m && m[2] && l.length < 80) {
       const k = m[1], v = m[2];
+      if (/^(كلمات|كلمات الشاعر)$/.test(k) && /^(قصيد|لطمي|نعي|موشح|انشود|اغني)/.test(M.norm(v))) continue;   // a heading, not a credit
       if (/قصيد/.test(k)) meta.title = meta.title || v;
       else if (/شاعر|كلمات/.test(k)) meta.poet = meta.poet || cleanName(v);
       else meta.reciter = meta.reciter || cleanName(v);

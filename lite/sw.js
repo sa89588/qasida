@@ -2,8 +2,8 @@
    - App code: network first, cached copy only when offline (an update is never mixed with old files).
    - Reader files (../vendor) and icons: cache first, stored the first time they are used.
    - The catalog lives in IndexedDB (lite.js); audio streams from its source and is not cached. */
-const VERSION = "qasida-lite-v8";
-const SHELL = ["./", "index.html", "lite.css?v=5", "library.js?v=4", "lite.js?v=6", "search-worker.js?v=5", "words.js?v=2", "manifest.webmanifest",
+const VERSION = "qasida-lite-v9";
+const SHELL = ["./", "index.html", "lite.css?v=5", "library.js?v=5", "lite.js?v=6", "search-worker.js?v=6", "words.js?v=2", "manifest.webmanifest",
   "../match.js?v=13", "../voice.js?v=13", "../poems.json?v=13", "../vendor/tesseract/tesseract.min.js", "../icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {

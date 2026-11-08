@@ -68,17 +68,30 @@ function build(shards, poems) {
   return { entries: entries.length, tracks };
 }
 
-/* docs: the poem-words chunks (format 3: [key, title, reciter, poet, url, packed 4-char word codes]). */
+/* docs: the poem-words chunks (format 3+: [key, title, reciter, poet, url, packed 4-char word codes]).
+   Codes become 24-bit integers; postings are typed arrays, so ~20k poems fit in a phone's memory. */
+const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const B64I = new Int16Array(128).fill(-1); for (let i = 0; i < 64; i++) B64I[B64.charCodeAt(i)] = i;
+const codeInt = (s, o = 0) => (B64I[s.charCodeAt(o)] << 18) | (B64I[s.charCodeAt(o + 1)] << 12) | (B64I[s.charCodeAt(o + 2)] << 6) | B64I[s.charCodeAt(o + 3)];
+let lyrSize = null;
 function buildLyrics(docs) {
   lyr = [];
-  for (const d of [].concat(docs || [])) for (const p of (d && d.poems) || [])
-    lyr.push({ title: p[1], reciter: p[2], poet: p[3], url: p[4], h: Wd.unpack(p[5] || "") });
-  const tmp = new Map();
-  lyr.forEach((p, i) => { for (const h of p.h) { let a = tmp.get(h); if (!a) tmp.set(h, a = []); a.push(i); } });
+  const packs = [];
+  for (const d of [].concat(docs || [])) for (const p of (d && d.poems) || []) { lyr.push({ title: p[1], reciter: p[2], poet: p[3], url: p[4] }); packs.push(p[5] || ""); }
   const N = lyr.length || 1;
+  // pass 1: document frequency per code
+  const df = new Map();
+  for (const pk of packs) for (let o = 0; o + 4 <= pk.length; o += 4) { const c = codeInt(pk, o); df.set(c, (df.get(c) || 0) + 1); }
+  // pass 2: postings, filled in place
   lyrPost = new Map(); lyrIdf = new Map();
-  for (const [h, a] of tmp) { lyrPost.set(h, Int32Array.from(a)); lyrIdf.set(h, Math.log(1 + N / a.length)); }
-  lyrMass = lyr.map((p) => p.h.reduce((sum, h) => sum + lyrIdf.get(h), 0));
+  const fill = new Map();
+  for (const [c, n] of df) { lyrPost.set(c, new Int32Array(n)); fill.set(c, 0); lyrIdf.set(c, Math.log(1 + N / n)); }
+  lyrMass = new Float32Array(lyr.length); lyrSize = new Uint16Array(lyr.length);
+  packs.forEach((pk, i) => {
+    let m = 0;
+    for (let o = 0; o + 4 <= pk.length; o += 4) { const c = codeInt(pk, o); const k = fill.get(c); lyrPost.get(c)[k] = i; fill.set(c, k + 1); m += lyrIdf.get(c); }
+    lyrMass[i] = m; lyrSize[i] = Math.min(65535, pk.length / 4);
+  });
   lyrByTitle = new Map(lyr.map((p, i) => [M.compact(p.title), i]));
   return lyr.length;
 }
@@ -87,7 +100,7 @@ function buildLyrics(docs) {
    Rare words count more than common ones (each word weighs log(1 + N/df)). */
 function searchLyrics(text, typed) {
   if (!lyr.length) return [];
-  const q = [...new Set(Wd.words(text).map(Wd.code))];
+  const q = [...new Set(Wd.words(text).map((w) => codeInt(Wd.code(w))))];
   if (!q.length) return [];
   const unknown = Math.log(1 + lyr.length);
   let qMass = 0;
@@ -105,6 +118,7 @@ function searchLyrics(text, typed) {
     else if (q.length === 1) s = 0.72;                                  // one word: every poem that has it
     else if (q.length <= 3) { if (n === q.length) s = 0.82; else if (n >= 2 && cov >= 0.6) s = 0.7; }
     else if (n >= 3 && cov >= 0.55) s = 0.55 + 0.45 * Math.min(1, cov);
+    if (s && lyrSize[i] > 450) s *= 0.86;            // a post bundling many poems matches a little of everything
     if (s) out.push({ i, s, cov });
   }
   out.sort((a, b) => b.s - a.s || b.cov - a.cov);
@@ -197,7 +211,7 @@ function searchTyped(text) {
     const inner = !wordIn && e.key.includes(q);
     const contains = q.includes(e.key) && e.key.length >= 6 && (" " + qn2 + " ").includes(" " + e.title + " ");
     let s = Math.max(M.dice(q, e.key), wordIn ? 0.92 : 0, inner ? 0.6 : 0,
-      contains ? 0.6 + 0.3 * (e.key.length / q.length) : 0, inTitle * 0.85 * (wordIn || contains ? 1 : 0.85));
+      contains ? 0.6 + 0.3 * (e.key.length / q.length) : 0, inTitle * 0.85 * (wordIn || contains ? 1 : 0.7));
     s *= e.weight;
     s += Math.min(0.04, e.recs.length * 0.004);
     if (s >= 0.5) out.push({ i, s });

@@ -42,7 +42,7 @@
     return Object.keys(manifest?.sections || {}).filter((s) => saved ? saved.includes(s) : (SECTIONS[s]?.[1] ?? true));
   }
 
-  const worker = new Worker(BASE + "search-worker.js?v=5");
+  const worker = new Worker(BASE + "search-worker.js?v=6");
   let qid = 0; const pending = new Map();
   let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
   let reloaded = null;                                 // resolves when a later load (check now) is indexed
