@@ -36,7 +36,7 @@ async function loadCatalog(force) {
 function showCatalog() {
   const m = catalog.manifest;
   $("#catInfo").textContent = m
-    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة` + (catalog.poems ? ` و${ar(catalog.poems)} قصيدة يُبحث في كلماتها` : "") + ` — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
+    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة` + (catalog.poems ? ` و${ar(catalog.poems)} ${catalog.poems <= 10 ? "قصائد" : "قصيدة"} يُبحث في كلماتها` : "") + ` — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
     : "فهرس صوت الشيعة غير متاح بعد؛ يعمل فهرس الكتاب وحده.";
   const list = $("#secList"); list.replaceChildren();
   const on = new Set(chosen(m));

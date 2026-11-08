@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 <header class="appbar">
@@ -81,7 +81,7 @@
     <form class="search" id="quickForm" role="search">
       <label class="vh" for="qq">ابحث بالعنوان أو بيت من القصيدة</label>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/></svg>
-      <input type="search" id="qq" placeholder="اكتب العنوان أو بيتاً من القصيدة" autocomplete="off" enterkeyhint="search">
+      <input type="search" id="qq" placeholder="اكتب أي كلمة أو بيتاً أو عنوان القصيدة" autocomplete="off" enterkeyhint="search">
       <button type="button" class="mic" data-for="qq" aria-label="إملاء صوتي"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
     </form>
 
@@ -190,7 +190,7 @@
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small" id="verLine">الإصدار ١٣</p>
+      <p class="muted small" id="verLine">الإصدار ١٤</p>
     </div>
   </section>
 </main>
@@ -233,12 +233,13 @@
 </div>
 
 <audio id="audio" preload="metadata"></audio>
-<script src="vendor/tesseract/tesseract.min.js?v=13"></script>
-<script src="match.js?v=13"></script>
-<script src="smart.js?v=13"></script>
-<script src="voice.js?v=13"></script>
-<script src="media.js?v=13"></script>
-<script src="sources.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="vendor/tesseract/tesseract.min.js?v=14"></script>
+<script src="match.js?v=14"></script>
+<script src="smart.js?v=14"></script>
+<script src="voice.js?v=14"></script>
+<script src="media.js?v=14"></script>
+<script src="sources.js?v=14"></script>
+<script src="lite/library.js?v=2"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

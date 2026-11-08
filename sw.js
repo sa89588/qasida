@@ -3,9 +3,9 @@
      the cached copy is used only when offline.
    - Reader files and icons (large, rarely change): cache first.
    - Audio and YouTube stream from their sources and are not cached. */
-const VERSION = "qasida-v13";
+const VERSION = "qasida-v14b";
 const SHELL = [
-  "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "voice.js", "media.js", "sources.js", "poems.json", "manifest.webmanifest",
+  "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "voice.js", "media.js", "sources.js", "lite/library.js?v=2", "lite/search-worker.js?v=3", "lite/words.js?v=1", "poems.json", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
   "vendor/tesseract/tesseract.min.js", "vendor/tesseract/worker.min.js"
 ];
@@ -19,7 +19,7 @@ self.addEventListener("install", (e) => {
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== VERSION) await caches.delete(k);
+    for (const k of await caches.keys()) if (k !== VERSION && !k.startsWith("qasida-lite-")) await caches.delete(k);   // the no-key version keeps its own cache
     await self.clients.claim();
   })());
 });

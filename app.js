@@ -130,7 +130,7 @@ function getWorker(){
   state.workerP = Tesseract.createWorker("ara", 1, {
     workerPath: abs("vendor/tesseract/worker.min.js"), corePath: abs("vendor/core/"), langPath: abs("vendor/lang"),
     workerBlobURL: false, gzip: true
-  }).then(async (w) => { try { await w.setParameters({ preserve_interword_spaces: "1" }); } catch {} state.worker = w; return w; })
+  }).then((w) => { state.worker = w; return w; })
     .catch((e) => { state.workerP = null; throw e; });
   return state.workerP;
 }
@@ -140,22 +140,30 @@ function scaleCanvas(src, w, h, maxSide){
   c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
   return c;
 }
-function grayCopy(src){
-  const c = document.createElement("canvas"); c.width = src.width; c.height = src.height;
-  const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data, hist = new Uint32Array(256);
-  for (let i = 0; i < d.length; i += 4){ const g = (d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114) | 0; d[i] = g; hist[g]++; }
-  const tot = c.width * c.height; let lo = 0, hi = 255, a = 0;
-  for (let v = 0; v < 256; v++){ a += hist[v]; if (a > tot * .02){ lo = v; break; } }
-  a = 0; for (let v = 255; v >= 0; v--){ a += hist[v]; if (a > tot * .02){ hi = v; break; } }
-  const r = Math.max(1, hi - lo);
-  for (let i = 0; i < d.length; i += 4){ let g = ((d[i] - lo) * 255 / r) | 0; g = g < 0 ? 0 : g > 255 ? 255 : g; d[i] = d[i + 1] = d[i + 2] = g; }
-  ctx.putImageData(img, 0, 0); return c;
+/* Uneven light: divide by a blurred copy of the page so the paper becomes evenly white.
+   (v13 stretched contrast instead, which turned paper grain into ink on clean pages.) */
+function flatten(src){
+  const W = src.width, H = src.height;
+  const sm = document.createElement("canvas"); sm.width = Math.max(1, W >> 4); sm.height = Math.max(1, H >> 4);
+  const sctx = sm.getContext("2d"); sctx.imageSmoothingQuality = "high"; sctx.drawImage(src, 0, 0, sm.width, sm.height);
+  const bg = document.createElement("canvas"); bg.width = W; bg.height = H;
+  const bctx = bg.getContext("2d", { willReadFrequently: true }); bctx.imageSmoothingQuality = "high"; bctx.drawImage(sm, 0, 0, W, H);
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  const octx = out.getContext("2d", { willReadFrequently: true }); octx.drawImage(src, 0, 0);
+  const img = octx.getImageData(0, 0, W, H), d = img.data, b = bctx.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < d.length; i += 4){
+    const g = d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114, bgv = Math.max(40, b[i] * .299 + b[i + 1] * .587 + b[i + 2] * .114);
+    const v = Math.min(255, (g / bgv) * 255) | 0; d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  octx.putImageData(img, 0, 0); return out;
 }
-async function ocr(colorCanvas){
+/* Read the photo as it is; if little comes out, read it again with the light evened out. */
+async function ocr(colorCanvas, quick){
   const w = await getWorker();
-  const { data } = await w.recognize(grayCopy(colorCanvas));
-  return data.text || "";
+  const t1 = (await w.recognize(colorCanvas)).data.text || "";
+  if (quick || arabicLetters(t1) >= 40) return t1;
+  const t2 = (await w.recognize(flatten(colorCanvas))).data.text || "";
+  return arabicLetters(t2) > arabicLetters(t1) ? t2 : t1;
 }
 const arabicLetters = (t) => (String(t).match(/[ء-ي]/g) || []).length;
 
@@ -213,11 +221,16 @@ async function scanLoop(){
     const c = grabFrame(1600); if (!c){ await sleep(250); continue; }
     state.busy = true; $("#stage").classList.add("reading");
     try {
-      const text = await ocr(c);
+      const text = await ocr(c, state.frames % 2 === 0);   // live frames: every other one gets the evened-light second look
       if (!state.scanning) break;
       state.frames++;
       const m = M.findMatches(state.poems, text, false);
       if (m.best){ buzz(); stopCamera(); openPoem(m.best.p, { raw: text }); break; }
+      if (arabicLetters(text) >= 30){
+        const lib = await libLookup(text, false, 1500);
+        if (!state.scanning) break;
+        if (lib && lib.best && lib.best.score >= 0.9){ buzz(); stopCamera(); const c2 = new AbortController(); state.ctl?.abort(); state.ctl = c2; await openFromLibrary(lib.best, { raw: text }, c2); break; }
+      }
       if (arabicLetters(text) >= 60) state.textyFrames++;
       if (S.ready() && state.textyFrames >= 1){ buzz(); const hi = grabFrame(1400) || c; stopCamera(); await smartFromFrame(hi, text); break; }
       if (m.candidates.length) camStatus("قد تكون «" + m.candidates[0].p.title + "»… قرّب الكاميرا قليلاً");
@@ -265,7 +278,14 @@ async function recognize(colorCanvas){
   if (ctl.signal.aborted) return;
   const m = M.findMatches(state.poems, text, false);
   if (m.best){ ctl.abort(); work(null); openPoem(m.best.p, { raw: text }); return; }
-  if (!smartP){ work(null); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
+  const lib = M.compact(text).length >= 12 ? await libLookup(text, false, 2500) : null;
+  if (ctl.signal.aborted) return;
+  if (lib && lib.best && lib.best.score >= 0.9){
+    ctl.abort(); work(null);
+    const c2 = new AbortController(); state.ctl = c2;
+    await openFromLibrary(lib.best, { raw: text }, c2); return;
+  }
+  if (!smartP){ work(null); if (lib && lib.list.length) showLibChoices(M.guessTitle(text) || text.slice(0, 40), lib.list); else showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
   let info;
   try { info = await smartP; }
   catch (e){ if (e.code === "cancelled") return; work(null); note(SMART_ERR[e.code] || "تعذّر التعرّف الذكي الآن. أعد المحاولة.", true); showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
@@ -283,6 +303,60 @@ const SMART_ERR = {
   bad_reply: "لم تكتمل القراءة. أعد المحاولة.",
   no_yt_key: "أضف مفتاح YouTube من الإعدادات ليبحث التطبيق عن التسجيل."
 };
+
+/* ---------- the on-phone library: ShiaVoice catalog + poem words (shared with the no-key version) ----------
+   Text → poem by its words, title → recordings, all on the phone and in a fraction of a second.
+   Gemini is then only needed to READ a photo or a voice clip, and as a fallback when the library has no answer. */
+const L = window.QLib;
+if (L) L.load(false).catch(() => {});
+const libSv = (x) => ({ id: x.id, title: x.title, artist: x.artist, duration: L.clock(x.dur), score: 0.9 });
+async function libLookup(text, typed, waitMs){
+  if (!L || !text || !String(text).trim()) return null;
+  try {
+    const res = await Promise.race([L.load(false).then(() => L.ask(text, typed)), new Promise((r) => setTimeout(() => r(null), waitMs ?? 5000))]);
+    if (!res) return null;
+    const list = (res.results || []).filter((r) => !r.book);
+    const [a, b] = list;
+    const best = a && a.score >= 0.85 && (!b || a.score - b.score >= 0.05 || (a.lyric && !b.lyric)) ? a : null;
+    return { best, list };
+  } catch { return null; }
+}
+/* Recordings of a known title from the library (empty if none). */
+async function libRecordings(title, reciter){
+  const r = await libLookup(title + (reciter ? " " + reciter : ""), true, 4000);
+  const t = M.compact(title);
+  const hit = r && r.list.find((x) => x.recs.length && (M.dice(t, M.compact(x.title)) >= 0.85 || M.compact(x.title).startsWith(t) || t.startsWith(M.compact(x.title))));
+  return hit ? hit.recs.slice(0, 8).map(libSv) : [];
+}
+/* Open a poem found in the library: its recordings are already known; YouTube is looked up in parallel. */
+async function openFromLibrary(r, page, ctl){
+  const reciter = r.lyric?.reciter || r.recs[0]?.artist || "";
+  const poem = newPoem({ title: r.title.slice(0, 120), poet: r.lyric?.poet || "", reciters: reciter ? [reciter] : [],
+    keywords: page.query ? [page.query.slice(0, 60)] : [], lyricUrl: r.lyric?.url || "", titleInferred: false, confidence: "high" });
+  const known = M.findMatches(state.poems, poem.title, true);
+  if (known.best && known.best.s >= 0.9){ if (page.query) rememberFragment(known.best.p, page.query); openPoem(known.best.p, page); return; }
+  poem.libSv = r.recs.slice(0, 8).map(libSv);
+  await openAndFill(poem, { ...page, lib: true }, [], null, ctl);
+}
+/* Several poems fit (e.g. one word that appears in many): let the person choose. */
+const recWord = (n) => n === 1 ? "تسجيل واحد" : n === 2 ? "تسجيلان" : ar(n) + (n <= 10 ? " تسجيلات" : " تسجيلاً");
+function showLibChoices(q, list){
+  if (list.length === 1){ const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(list[0], { query: q }, c); return; }
+  state.temp = null;
+  const v = $("#view-poem"); v.replaceChildren();
+  v.append(el("button", { type: "button", class: "back", onclick: () => go("scan") }, el("span", { html: IC.back }), "رجوع"));
+  v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: "قصائد فيها ما أعطيت" }), el("h2", { text: "«" + q.slice(0, 60) + "»" }),
+    el("p", { class: "by", text: "اختر القصيدة لتظهر تسجيلاتها." })));
+  v.append(el("div", { class: "card" }, el("div", { class: "cands" }, list.slice(0, 12).map((r) => {
+    const who = r.lyric?.reciter || r.recs[0]?.artist || "";
+    return el("button", { type: "button", class: "btn", onclick: () => { const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(r, { query: q }, c); } },
+      r.title + (who ? " — " + who : "") + (r.total ? " · " + recWord(r.total) : ""));
+  }))));
+  for (const x of ["scan", "index", "settings"]) $("#view-" + x).hidden = true;
+  v.hidden = false; state.view = "poem";
+  $$(".tabbar a").forEach((a) => a.removeAttribute("aria-current"));
+  window.scrollTo({ top: 0 });
+}
 
 /* After Gemini identified the poem: open it at once, then fill in the recordings. */
 /* ---------- from a part of a poem to the poem, then its recordings ---------- */
@@ -326,9 +400,12 @@ async function findRecordings(poem, evidence, named, signal, onPart){
   };
   const ytP = S.hasYouTube() ? S.findVideos({ title, reciter, poet: poem.poet || "", queries: [], verses: [], refrain: poem.refrain || "", opening: poem.opening || "" }, signal, { max: 1, noExtra: true })
     .then((v) => { out.yt = v.filter((x) => videoFits(x, title, reciter)).slice(0, 5); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
-  const svP = window.QSources && QSources.available() ? QSources.findShiavoice({ title, opening: poem.opening || "", refrain: poem.refrain || "", reciter, queries: [], verses: [] }, signal)
+  const viaGemini = () => window.QSources && QSources.available() ? QSources.findShiavoice({ title, opening: poem.opening || "", refrain: poem.refrain || "", reciter, queries: [], verses: [] }, signal)
     .then((x) => { out.sv = x; onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
-  if (onPart && evHits.length) onPart(merge());
+  let svP;
+  if (poem.libSv && poem.libSv.length){ out.sv = poem.libSv; svP = Promise.resolve(); }
+  else svP = libRecordings(title, reciter).then((x) => { if (x.length){ out.sv = x; onPart && onPart(merge()); } else return viaGemini(); }).catch(() => viaGemini());
+  if (onPart && (evHits.length || out.sv.length)) onPart(merge());
   await Promise.all([ytP, svP]);
   return merge();
 }
@@ -371,6 +448,16 @@ async function smartFlow(info, raw, ctl){
   const lm = M.findMatches(state.poems, clean, false);
   if (lm.best){ work(null); openPoem(lm.best.p, { verses: info.verses, raw }); return; }
   const fragment = [info.refrain, ...info.verses.slice(0, 3).map((v) => v.join(" "))].filter(Boolean).join(" / ") || info.opening || info.title;
+  {
+    work("أبحث في كلمات القصائد…", "على هاتفك");
+    const lib = (await libLookup(clean, false, 4000)) || null;
+    const lib2 = lib && lib.best ? lib : await libLookup(fragment, true, 2000);
+    const hit = (lib && lib.best) || (lib2 && lib2.best);
+    if (ctl.signal.aborted) return;
+    if (hit && (!info.title_printed || M.dice(M.compact(info.title), M.compact(hit.title)) >= 0.7 || hit.lyric)){
+      work(null); await openFromLibrary(hit, { verses: info.verses, raw, smartNew: true }, ctl); return;
+    }
+  }
   let title = info.title, poet = info.poet, reciter = info.reciter, confidence = info.confidence, evidence = [], named = null;
   if (!info.title_printed && S.hasYouTube()){
     work("أتعرّف على القصيدة…", "من الأبيات");
@@ -394,10 +481,16 @@ async function textSearch(q){
   q = q.trim(); if (q.length < 2) return;
   const m = M.findMatches(state.poems, q, true);
   if (m.best){ openPoem(m.best.p, { query: q }); return; }
-  if (!S.hasYouTube() || !S.ready()){
-    go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
-  }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
+  work("أبحث في الكلمات والعناوين…", "على هاتفك");
+  const lib = await libLookup(q, true);
+  if (ctl.signal.aborted) return;
+  if (lib && lib.best){ work(null); await openFromLibrary(lib.best, { query: q }, ctl); return; }
+  const fewWords = q.split(/\s+/).length <= 2;
+  if (lib && lib.list.length && (fewWords || !S.hasYouTube() || !S.ready())){ work(null); showLibChoices(q, lib.list); return; }
+  if (!S.hasYouTube() || !S.ready()){
+    work(null); go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
+  }
   work("أتعرّف على القصيدة…", "من الجزء الذي أعطيته");
   let evidence = [], named = null;
   try { ({ evidence, named } = await namePart(q, null, ctl.signal)); } catch { return; }
@@ -514,7 +607,7 @@ function renderPoem(id){
 
   v.append(el("button", { type: "button", class: "back", onclick: () => (history.length > 1 ? history.back() : go("scan")) }, el("span", { html: IC.back }), "رجوع"));
 
-  const pill = page && page.query ? (page.unsure ? "تعرّف غير مؤكد" : "تعرّفنا عليها من الجزء الذي أعطيته") : p.temp ? "نتائج البحث" : page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page && (page.raw || page.verses) ? "تعرّفنا على القصيدة" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
+  const pill = page && page.lib ? (page.query ? "وجدناها من الكلمات التي أعطيتها" : "تعرّفنا عليها من كلماتها") : page && page.query ? (page.unsure ? "تعرّف غير مؤكد" : "تعرّفنا عليها من الجزء الذي أعطيته") : p.temp ? "نتائج البحث" : page && page.smartNew ? (p.titleInferred ? "تعرّف ذكي · العنوان مستنتج" : "تعرّف ذكي") : page && (page.raw || page.verses) ? "تعرّفنا على القصيدة" : p.local ? "محفوظة على هاتفك" : "من الفهرس";
   const by = el("p", { class: "by" });
   if (p.poet) by.append("شعر ", el("b", { text: p.poet }));
   const chips = el("div", { class: "chips" }, (p.reciters || []).map((r) => el("span", { text: "بصوت " + r })), p.subject ? el("span", { text: p.subject }) : null,
@@ -522,6 +615,7 @@ function renderPoem(id){
   const shareMsg = el("span", { class: "small", "aria-live": "polite" });
   const acts = el("div", { class: "acts" },
     p.temp ? el("button", { type: "button", onclick: () => saveTemp() }, "احفظ في الفهرس") : el("button", { type: "button", onclick: () => sharePoem(p, shareMsg) }, el("span", { html: IC.share }), "مشاركة"),
+    p.lyricUrl && safeUrl(p.lyricUrl) ? el("a", { href: safeUrl(p.lyricUrl), target: "_blank", rel: "noopener" }, "اقرأ الكلمات") : null,
     el("a", { href: ytSearchUrl(p.title, (p.reciters || [])[0]), target: "_blank", rel: "noopener" }, "أداءات أخرى"), shareMsg);
   v.append(el("div", { class: "hero" }, el("span", { class: "pill", text: pill }), el("h2", { text: p.title }), (p.poet ? by : null), chips,
     page && page.query ? el("p", { class: "by", text: "أعطيتَ: «" + page.query.slice(0, 80) + "»" }) : null, acts));
@@ -605,7 +699,7 @@ function mount(stage, p, r, autoplay){
   if (r.type === "file" && r.kind === "video") return mountVideo(stage, p, r, autoplay);
   if (r.type === "shiavoice"){
     stage.append(el("div", { class: "svcard" },
-      el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" }),
+      el("div", { class: "svwrap" }, el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" })),
       el("div", { class: "svmeta" }, el("span", { class: "svlogo", text: "صوت الشيعة" }), el("span", { class: "small muted", text: [r.reciter, r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") }),
         el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تحميل"))));
     return;

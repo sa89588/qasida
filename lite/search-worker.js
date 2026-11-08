@@ -245,7 +245,13 @@ function query(text, typed) {
   }
   // A title match whose poem text we also have: offer its words.
   for (const r of results) if (!r.lyric && !r.book) {
-    const li = lyrByTitle.get(r.key) ?? lyrByTitle.get(M.compact(r.title));
+    const ct = M.compact(r.title);
+    let li = lyrByTitle.get(r.key) ?? lyrByTitle.get(ct);
+    if (li == null && ct.length >= 8) {                       // catalog titles often run on into the first line
+      const rk = M.poetKey(r.recs[0]?.artist || "");
+      li = lyr.findIndex((L) => { const lt = M.compact(L.title); return lt.length >= 6 && ct.startsWith(lt) && (!rk || !L.reciter || M.dice(M.poetKey(L.reciter), rk) >= 0.6 || r.recs.some((x) => M.dice(M.poetKey(x.artist), M.poetKey(L.reciter)) >= 0.8)); });
+      if (li < 0) li = null;
+    }
     if (li != null) r.lyric = { url: lyr[li].url, poet: lyr[li].poet, reciter: lyr[li].reciter };
   }
   // Display title: the most common original spelling among the recordings.

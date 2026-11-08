@@ -41,7 +41,7 @@
     return Object.keys(manifest?.sections || {}).filter((s) => saved ? saved.includes(s) : (SECTIONS[s]?.[1] ?? true));
   }
 
-  const worker = new Worker(BASE + "search-worker.js?v=2");
+  const worker = new Worker(BASE + "search-worker.js?v=3");
   let qid = 0; const pending = new Map();
   let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
   const info = { tracks: 0, poems: 0, manifest: null, updated: null, partial: false, loaded: false };
