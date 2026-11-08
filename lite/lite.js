@@ -316,6 +316,42 @@ $("#micBtn").addEventListener("click", async () => {
   } finally { dict = null; mic.classList.remove("live"); }
 });
 
+/* Listen to a recording playing nearby (TV, another phone, a majlis): the browser turns what it hears
+   into words as they come, and the poem-words index is searched every few seconds until a poem fits. */
+let listening = null;
+$("#listenBtn").addEventListener("click", () => { if (listening) listening.stop(); else listen(); });
+function listen() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { status("الاستماع غير متاح في هذا المتصفح. جرّب Chrome، أو اكتب سطراً سمعته.", true); return; }
+  const btn = $("#listenBtn"), started = Date.now(), LIMIT = 30000;
+  let heard = "", searched = "", done = false, best = null;
+  const r = new SR(); r.lang = "ar-IQ"; r.continuous = true; r.interimResults = true;
+  r.onresult = (ev) => { heard = [...ev.results].map((x) => x[0].transcript).join(" ").trim(); $("#q").value = heard; };
+  r.onerror = (ev) => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") { finish(); status("لم يُسمح باستخدام الميكروفون. امنح الإذن من إعدادات المتصفح.", true); } };
+  r.onend = () => { if (!done && Date.now() - started < LIMIT) { try { r.start(); } catch {} } };   // the browser pauses on silence: keep listening
+  const tick = setInterval(async () => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    if (!done) status(`أستمع… ${QMatch.toArabicDigits(secs)} ث` + (heard ? " — «" + heard.split(/\s+/).slice(-8).join(" ") + "»" : " — قرّب الهاتف من الصوت"));
+    if (Date.now() - started > LIMIT) { finish(); return; }
+    if (heard && heard !== searched && heard.split(/\s+/).length >= 3) {
+      searched = heard;
+      const res = await ask(heard, true).catch(() => null);
+      const top = res && res.results[0];
+      if (top && (!best || top.score > best.score)) best = { ...top, all: res.results };
+      if (top && top.score >= 0.85 && heard.split(/\s+/).length >= 4) finish();
+    }
+  }, 2500);
+  function finish() {
+    if (done) return; done = true; clearInterval(tick); listening = null;
+    try { r.stop(); } catch {}
+    btn.classList.remove("live");
+    if (best) { status(""); $("#readBox").hidden = true; render(best.all, heard, true, null); }
+    else status(heard ? "سمعت كلاماً لكن لم أجد قصيدة تطابقه. اكتب سطراً أوضح أو جرّب مرة أخرى أقرب إلى الصوت." : "لم أسمع شيئاً واضحاً. قرّب الهاتف من الصوت وجرّب مرة أخرى.", !best);
+  }
+  try { r.start(); } catch { status("تعذّر تشغيل الميكروفون.", true); return; }
+  btn.classList.add("live"); clearResults(); listening = { stop: finish };
+}
+
 if ("serviceWorker" in navigator) {
   const had = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register("sw.js?v=1", { scope: "./" }).catch(() => {});

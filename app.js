@@ -283,7 +283,7 @@ async function recognize(colorCanvas){
   if (lib && lib.best && lib.best.score >= 0.9){
     ctl.abort(); work(null);
     const c2 = new AbortController(); state.ctl = c2;
-    await openFromLibrary(lib.best, { raw: text }, c2); return;
+    await openFromLibrary(lib.best, { raw: text, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) }, c2); return;
   }
   if (!smartP){ work(null); if (lib && lib.list.length) showLibChoices(M.guessTitle(text) || text.slice(0, 40), lib.list); else showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
   let info;
@@ -358,7 +358,7 @@ async function libRecordings(title, reciter){
   const r = await libLookup(title + (reciter ? " " + reciter : ""), true, 4000);
   const t = M.compact(title);
   const hit = r && r.list.find((x) => x.recs.length && (M.dice(t, M.compact(x.title)) >= 0.85 || M.compact(x.title).startsWith(t) || t.startsWith(M.compact(x.title))));
-  return hit ? hit.recs.slice(0, 8).map(libSv) : [];
+  return hit ? hit.recs.slice(0, 30).map(libSv) : [];
 }
 /* Open a poem found in the library: its recordings are already known; YouTube is looked up in parallel. */
 async function openFromLibrary(r, page, ctl){
@@ -367,7 +367,8 @@ async function openFromLibrary(r, page, ctl){
     keywords: page.query ? [page.query.slice(0, 60)] : [], lyricUrl: r.lyric?.url || "", titleInferred: false, confidence: "high" });
   const known = M.findMatches(state.poems, poem.title, true);
   if (known.best && known.best.s >= 0.9){ if (page.query) rememberFragment(known.best.p, page.query); openPoem(known.best.p, page); return; }
-  poem.libSv = r.recs.slice(0, 8).map(libSv);
+  page.alts = (page.alts || []).filter((x) => M.compact(x.title) !== M.compact(r.title));
+  poem.libSv = r.recs.slice(0, 30).map(libSv);
   await openAndFill(poem, { ...page, lib: true }, [], null, ctl);
 }
 /* Several poems fit (e.g. one word that appears in many): let the person choose. */
@@ -381,7 +382,7 @@ function showLibChoices(q, list){
     el("p", { class: "by", text: "اختر القصيدة لتظهر تسجيلاتها." })));
   v.append(el("div", { class: "card" }, el("div", { class: "cands" }, list.slice(0, 12).map((r) => {
     const who = r.lyric?.reciter || r.recs[0]?.artist || "";
-    return el("button", { type: "button", class: "btn", onclick: () => { const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(r, { query: q }, c); } },
+    return el("button", { type: "button", class: "btn", onclick: () => { const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(r, { query: q, alts: list.filter((x) => x !== r).slice(0, 6) }, c); } },
       r.title + (who ? " — " + who : "") + (r.total ? " · " + recWord(r.total) : ""));
   }))));
   for (const x of ["scan", "index", "settings"]) $("#view-" + x).hidden = true;
@@ -426,12 +427,14 @@ async function findRecordings(poem, evidence, named, signal, onPart){
   const evHits = (evidence || []).filter((v, i) => matched.has(i + 1) && (!full || full.has(i + 1)) && v.verdict !== "short" && v.verdict !== "bad");
   const out = { sv: [], yt: [] };
   const merge = () => {
-    const seen = new Set(), list = out.sv.map(svRec);
-    for (const v of [...evHits, ...out.yt]) { if (seen.has(v.id)) continue; seen.add(v.id); list.push(ytRec(v, true)); }
-    return list.slice(0, 10);
+    // Audio first (up to 30), then videos (up to 6): one source must never crowd out the other.
+    const seen = new Set(), list = out.sv.slice(0, 30).map(svRec);
+    let nv = 0;
+    for (const v of [...evHits, ...out.yt]) { if (seen.has(v.id) || nv >= 6) continue; seen.add(v.id); list.push(ytRec(v, true)); nv++; }
+    return list;
   };
   const ytP = S.hasYouTube() ? S.findVideos({ title, reciter, poet: poem.poet || "", queries: [], verses: [], refrain: poem.refrain || "", opening: poem.opening || "" }, signal, { max: 1, noExtra: true })
-    .then((v) => { out.yt = v.filter((x) => videoFits(x, title, reciter)).slice(0, 5); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
+    .then((v) => { out.yt = v.filter((x) => videoFits(x, title, reciter)).slice(0, 6); onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
   const viaGemini = () => window.QSources && QSources.available() ? QSources.findShiavoice({ title, opening: poem.opening || "", refrain: poem.refrain || "", reciter, queries: [], verses: [] }, signal)
     .then((x) => { out.sv = x; onPart && onPart(merge()); }).catch(() => {}) : Promise.resolve();
   let svP;
@@ -487,7 +490,8 @@ async function smartFlow(info, raw, ctl){
     const hit = (lib && lib.best) || (lib2 && lib2.best);
     if (ctl.signal.aborted) return;
     if (hit && (!info.title_printed || M.dice(M.compact(info.title), M.compact(hit.title)) >= 0.7 || hit.lyric)){
-      work(null); await openFromLibrary(hit, { verses: info.verses, raw, smartNew: true }, ctl); return;
+      const pool = [...((lib && lib.list) || []), ...((lib2 && lib2.list) || [])].filter((x) => x !== hit && x.score >= 0.75);
+      work(null); await openFromLibrary(hit, { verses: info.verses, raw, smartNew: true, alts: pool.slice(0, 6) }, ctl); return;
     }
   }
   let title = info.title, poet = info.poet, reciter = info.reciter, confidence = info.confidence, evidence = [], named = null;
@@ -517,7 +521,7 @@ async function textSearch(q){
   work("أبحث في الكلمات والعناوين…", "على هاتفك");
   const lib = await libLookup(q, true);
   if (ctl.signal.aborted) return;
-  if (lib && lib.best){ work(null); await openFromLibrary(lib.best, { query: q }, ctl); return; }
+  if (lib && lib.best){ work(null); await openFromLibrary(lib.best, { query: q, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) }, ctl); return; }
   const fewWords = q.split(/\s+/).length <= 2;
   if (lib && lib.list.length && (fewWords || !S.hasYouTube() || !S.ready())){ work(null); showLibChoices(q, lib.list); return; }
   if (!S.hasYouTube() || !S.ready()){
@@ -546,8 +550,9 @@ async function moreFromShiavoice(p, btn, msg){
   btn.disabled = true; msg.textContent = "أبحث في صوت الشيعة…";
   try {
     const found = await QSources.findShiavoice({ title: p.title, opening: p.opening, refrain: p.refrain, reciter: (p.reciters || [])[0] || "", queries: [], verses: [] });
-    const add = found.map((x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيعة", reciter: x.artist, note: x.title, duration: x.duration }));
-    if (!add.length){ msg.textContent = "لم أجد لها تسجيلاً في صوت الشيعة."; btn.disabled = false; return; }
+    const have = new Set((p.recordings || []).map((r) => r.id));
+    const add = found.filter((x) => !have.has(x.id)).map((x) => ({ type: "shiavoice", id: x.id, source: "صوت الشيعة", reciter: x.artist, note: x.title, duration: x.duration }));
+    if (!add.length){ msg.textContent = have.size ? "لا تسجيلات أخرى لها في صوت الشيعة غير المعروضة." : "لم أجد لها تسجيلاً في صوت الشيعة."; btn.disabled = false; return; }
     if (p.temp) p.recordings = [...add, ...p.recordings];
     else { const ex = lsGet(LS.extra, {}); ex[p.id] = [...add, ...(ex[p.id] || [])]; lsSet(LS.extra, ex); rebuild(); }
     renderPoem(p.id);
@@ -681,10 +686,22 @@ function renderPoem(id){
     v.append(c);
   }
 
-  if (window.QSources && QSources.available() && !(p.recordings || []).some((r) => r.type === "shiavoice") && !(page && page.searching)){
+  if (window.QSources && QSources.available() && !(page && page.searching)){
+    const hasSv = (p.recordings || []).some((r) => r.type === "shiavoice");
     const m2 = el("span", { class: "small muted", "aria-live": "polite" });
-    const b2 = el("button", { type: "button", class: "chip", onclick: () => moreFromShiavoice(p, b2, m2) }, el("span", { html: IC.note }), "ابحث عن تسجيلاتها في صوت الشيعة");
+    const b2 = el("button", { type: "button", class: "chip", onclick: () => moreFromShiavoice(p, b2, m2) }, el("span", { html: IC.note }),
+      hasSv ? "ابحث عن تسجيلات أخرى في صوت الشيعة مباشرة" : "ابحث عن تسجيلاتها في صوت الشيعة");
     v.append(el("div", { class: "row gap" }, b2, m2));
+  }
+  const alts = (page && page.alts) || [];
+  if (alts.length){
+    v.append(el("div", { class: "card" }, el("h3", { class: "sec", text: "قد تقصد أيضاً" }),
+      el("div", { class: "cands" }, alts.map((r) => {
+        const who = r.lyric?.reciter || r.recs[0]?.artist || "";
+        return el("button", { type: "button", class: "btn", onclick: () => { const c = new AbortController(); state.ctl?.abort(); state.ctl = c;
+          openFromLibrary(r, { query: page.query, raw: page.raw, alts: alts.filter((x) => x !== r).concat([{ title: p.title, recs: (p.recordings || []).filter((x) => x.type === "shiavoice").map((x) => ({ id: x.id, title: x.note || p.title, artist: x.reciter, dur: 0 })), lyric: p.lyricUrl ? { url: p.lyricUrl, poet: p.poet, reciter: (p.reciters || [])[0] || "" } : null, total: 0 }]).slice(0, 6) }, c); } },
+          r.title + (who ? " — " + who : "") + (r.total ? " · " + countAr(r.total, W_TRACKS) : ""));
+      }))));
   }
   const links = (p.recordings || []).filter((r) => r.type === "link" && safeUrl(r.url));
   if (links.length) v.append(el("div", { class: "card" }, el("h3", { class: "sec", text: "مصادر أخرى" }),

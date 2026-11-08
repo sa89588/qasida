@@ -23,6 +23,7 @@ let artists = [];          // per shard
 let shardInfo = [];        // [{section, artists, albums}]
 let book = [];             // poems.json entries (curated, with Rafed audio)
 let keyIndex = new Map();  // title key -> entry index
+let prefIndex = new Map(); // first 8 letters of a title key -> entry indexes (to find other spellings)
 /* Poem words (hashed): which poem contains these words? */
 let lyr = [], lyrPost = new Map(), lyrIdf = new Map(), lyrMass = [], lyrByTitle = new Map();
 
@@ -56,6 +57,8 @@ function build(shards, poems) {
     }
   });
   keyIndex = new Map(entries.map((e, i) => [e.key, i]));
+  prefIndex = new Map();
+  entries.forEach((e, i) => { if (e.key.length >= 8) { const k = e.key.slice(0, 8); let a = prefIndex.get(k); if (!a) prefIndex.set(k, a = []); a.push(i); } });
   // Inverted index on character trigrams of each title key.
   const tmp = new Map();
   lens = new Uint16Array(entries.length);
@@ -143,6 +146,29 @@ function entryFor(title, reciter) {
     if (s > bestS) { bestS = s; best = i; }
   }
   return best;
+}
+
+/* Other catalog entries for the same poem: the same title written longer (running on into the first line)
+   or shorter, or spelled slightly differently. Their recordings belong with this poem. */
+function related(i) {
+  const k = entries[i].key;
+  if (k.length < 8) return [];
+  const out = [];
+  for (const j of prefIndex.get(k.slice(0, 8)) || []) {
+    if (j === i) continue;
+    const kj = entries[j].key, short = Math.min(k.length, kj.length), long = Math.max(k.length, kj.length);
+    if (((kj.startsWith(k) || k.startsWith(kj)) && short >= 0.6 * long) || M.dice(k, kj) >= 0.88) out.push(j);
+  }
+  return out;
+}
+/* All recordings of entry i and its other spellings, each recording once. */
+function recsOf(i, seen) {
+  const ids = new Set(), list = [];
+  for (const j of [i, ...related(i)]) {
+    if (seen) seen.add(j);
+    for (const ref of entries[j].recs) { const r = rec(ref); if (!ids.has(r.id)) { ids.add(r.id); list.push(r); } }
+  }
+  return list;
 }
 
 function rec(ref) {
@@ -254,7 +280,7 @@ function query(text, typed) {
     if (lyrSeen.has(tk)) continue; lyrSeen.add(tk);
     const idx = entryFor(L.title, L.reciter);
     let recs = [];
-    if (idx >= 0) { if (seen.has(idx)) continue; seen.add(idx); recs = entries[idx].recs.map(rec); }
+    if (idx >= 0) { if (seen.has(idx)) continue; recs = recsOf(idx, seen); }
     results.push({ title: L.title, score: Math.min(1, Math.max(s, idx >= 0 ? titleScore.get(idx) || 0 : 0)), lyric: { url: L.url, poet: L.poet, reciter: L.reciter },
       recs: sortRecs(recs, text + " " + L.reciter).slice(0, 60), total: recs.length });
     if (results.length >= 12) break;
@@ -262,9 +288,8 @@ function query(text, typed) {
   for (const { i, s } of found) {
     if (results.length >= 14) break;
     if (seen.has(i)) continue;
-    seen.add(i);
     const e = entries[i];
-    const recs = e.recs.map(rec);
+    const recs = recsOf(i, seen);
     results.push({ title: e.recs.length ? recs[0].title : e.title, key: e.key, score: Math.min(1, s), recs: sortRecs(recs, text).slice(0, 60), total: recs.length });
   }
   // A title match whose poem text we also have: offer its words.
