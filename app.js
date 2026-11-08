@@ -283,7 +283,9 @@ async function recognize(colorCanvas){
   if (lib && lib.best && lib.best.score >= 0.9){
     ctl.abort(); work(null);
     const c2 = new AbortController(); state.ctl = c2;
-    await openFromLibrary(lib.best, { raw: text, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) }, c2); return;
+    const pg = { raw: text, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) };
+    whenOutside(pg, outsideSearch(M.guessTitle(text) || text.split("\n").slice(0, 2).join(" "), c2.signal));
+    await openFromLibrary(lib.best, pg, c2); return;
   }
   if (!smartP){ work(null); if (lib && lib.list.length) showLibChoices(M.guessTitle(text) || text.slice(0, 40), lib.list); else showUnknown({ raw: text, candidates: m.candidates.map((c) => c.p) }); return; }
   let info;
@@ -335,7 +337,9 @@ async function checkNew(btn, msg){
   btn.disabled = false;
 }
 if (L){
+  L.onChange(libStatus);
   L.load(false).then(libStatus).catch(() => {});
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Date.now() - (L.info.checked || 0) > 30 * 60e3) L.checkNow().catch(() => {}); });
   libStatus();
   $("#newBtn")?.addEventListener("click", () => checkNew($("#newBtn"), null));
   $("#libCheck")?.addEventListener("click", () => checkNew($("#libCheck"), $("#libMsg")));
@@ -345,7 +349,7 @@ const libSv = (x) => ({ id: x.id, title: x.title, artist: x.artist, duration: L.
 async function libLookup(text, typed, waitMs){
   if (!L || !text || !String(text).trim()) return null;
   try {
-    const res = await Promise.race([L.load(false).then(() => L.ask(text, typed)), new Promise((r) => setTimeout(() => r(null), waitMs ?? 5000))]);
+    const res = await Promise.race([L.load(false).then(() => L.ask(text, typed)), new Promise((r) => setTimeout(() => r(null), waitMs ?? 3000))]);
     if (!res) return null;
     const list = (res.results || []).filter((r) => !r.book);
     const [a, b] = list;
@@ -369,12 +373,46 @@ async function openFromLibrary(r, page, ctl){
   if (known.best && known.best.s >= 0.9){ if (page.query) rememberFragment(known.best.p, page.query); openPoem(known.best.p, page); return; }
   page.alts = (page.alts || []).filter((x) => M.compact(x.title) !== M.compact(r.title));
   poem.libSv = r.recs.slice(0, 30).map(libSv);
-  await openAndFill(poem, { ...page, lib: true }, [], null, ctl);
+  page.lib = true;
+  await openAndFill(poem, page, [], null, ctl);
 }
+/* Beyond the catalog: YouTube searched with the person's own words, in parallel with the catalog.
+   Only full recitations pass (no shorts, clips or songs); shown apart from the poem's own recordings. */
+function outsideSearch(text, signal){
+  if (!S.hasYouTube() || !text || !String(text).trim()) return Promise.resolve([]);
+  const t = String(text).replace(/\s+/g, " ").trim().slice(0, 90);
+  return S.findVideos({ title: "", queries: [t], verses: [[t, ""]], refrain: "", opening: t, reciter: "" }, signal, { max: 1, noExtra: true })
+    .then((v) => v.filter((x) => x.verdict !== "short" && x.verdict !== "bad").slice(0, 8)).catch(() => []);
+}
+function whenOutside(page, outP){
+  if (!outP) return;
+  page.outsideP = outP;
+  outP.then((v) => {
+    page.outside = v;
+    if (state.page === page && state.view === "poem" && $("#audio").paused && !document.querySelector("#view-poem .yt iframe")) renderPoem(state.poemId);
+  });
+}
+function outsideCard(p, page){
+  const have = new Set((p.recordings || []).map((r) => r.id));
+  const vids = ((page && page.outside) || []).filter((v) => !have.has(v.id)).slice(0, 6);
+  if (!vids.length) return null;
+  const stage = el("div", { class: "player-stage" }); stage.hidden = true;
+  const rows = el("div", { class: "recs" });
+  for (const v of vids){
+    const r = ytRec(v, false);
+    const b = el("button", { type: "button", class: "rec", "aria-current": "false", onclick: () => { $$(".rec", rows).forEach((x) => x.setAttribute("aria-current", "false")); b.setAttribute("aria-current", "true"); stage.hidden = false; mount(stage, p, r, false); } },
+      el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + v.id + "/mqdefault.jpg')" }),
+      el("span", { class: "tx" }, el("b", { text: v.title }), el("span", { text: [v.channel, "يوتيوب"].filter(Boolean).join(" · ") })));
+    rows.append(b);
+  }
+  return el("div", { class: "card" }, el("h3", { class: "sec", text: "من خارج الفهرس" }),
+    el("p", { class: "muted small", text: "تسجيلات كاملة وجدها البحث في يوتيوب بكلماتك نفسها؛ قد تكون هذه القصيدة بأداء آخر، أو قصيدة غيرها." }), stage, rows);
+}
+
 /* Several poems fit (e.g. one word that appears in many): let the person choose. */
 const recWord = (n) => n === 1 ? "تسجيل واحد" : n === 2 ? "تسجيلان" : ar(n) + (n <= 10 ? " تسجيلات" : " تسجيلاً");
-function showLibChoices(q, list){
-  if (list.length === 1){ const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(list[0], { query: q }, c); return; }
+function showLibChoices(q, list, outP){
+  if (list.length === 1){ const c = new AbortController(); state.ctl?.abort(); state.ctl = c; const pg = { query: q }; whenOutside(pg, outP); openFromLibrary(list[0], pg, c); return; }
   state.temp = null;
   const v = $("#view-poem"); v.replaceChildren();
   v.append(el("button", { type: "button", class: "back", onclick: () => go("scan") }, el("span", { html: IC.back }), "رجوع"));
@@ -385,6 +423,10 @@ function showLibChoices(q, list){
     return el("button", { type: "button", class: "btn", onclick: () => { const c = new AbortController(); state.ctl?.abort(); state.ctl = c; openFromLibrary(r, { query: q, alts: list.filter((x) => x !== r).slice(0, 6) }, c); } },
       r.title + (who ? " — " + who : "") + (r.total ? " · " + recWord(r.total) : ""));
   }))));
+  if (outP){
+    const slot = el("div"); v.append(slot);
+    outP.then((vids) => { if (!slot.isConnected) return; const c = outsideCard({ recordings: [], title: q }, { outside: vids }); if (c) slot.replaceWith(c); });
+  }
   for (const x of ["scan", "index", "settings"]) $("#view-" + x).hidden = true;
   v.hidden = false; state.view = "poem";
   $$(".tabbar a").forEach((a) => a.removeAttribute("aria-current"));
@@ -491,7 +533,9 @@ async function smartFlow(info, raw, ctl){
     if (ctl.signal.aborted) return;
     if (hit && (!info.title_printed || M.dice(M.compact(info.title), M.compact(hit.title)) >= 0.7 || hit.lyric)){
       const pool = [...((lib && lib.list) || []), ...((lib2 && lib2.list) || [])].filter((x) => x !== hit && x.score >= 0.75);
-      work(null); await openFromLibrary(hit, { verses: info.verses, raw, smartNew: true, alts: pool.slice(0, 6) }, ctl); return;
+      const pg = { verses: info.verses, raw, smartNew: true, alts: pool.slice(0, 6) };
+      whenOutside(pg, outsideSearch(fragment, ctl.signal));
+      work(null); await openFromLibrary(hit, pg, ctl); return;
     }
   }
   let title = info.title, poet = info.poet, reciter = info.reciter, confidence = info.confidence, evidence = [], named = null;
@@ -519,11 +563,12 @@ async function textSearch(q){
   if (m.best){ openPoem(m.best.p, { query: q }); return; }
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
   work("أبحث في الكلمات والعناوين…", "على هاتفك");
+  const outP = outsideSearch(q, ctl.signal);                // the wider web, in parallel
   const lib = await libLookup(q, true);
   if (ctl.signal.aborted) return;
-  if (lib && lib.best){ work(null); await openFromLibrary(lib.best, { query: q, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) }, ctl); return; }
+  if (lib && lib.best){ work(null); const pg = { query: q, alts: lib.list.filter((x) => x !== lib.best && x.score >= 0.75).slice(0, 6) }; whenOutside(pg, outP); await openFromLibrary(lib.best, pg, ctl); return; }
   const fewWords = q.split(/\s+/).length <= 2;
-  if (lib && lib.list.length && (fewWords || !S.hasYouTube() || !S.ready())){ work(null); showLibChoices(q, lib.list); return; }
+  if (lib && lib.list.length && (fewWords || !S.hasYouTube() || !S.ready())){ work(null); showLibChoices(q, lib.list, outP); return; }
   if (!S.hasYouTube() || !S.ready()){
     work(null); go("index"); $("#q").value = q; renderIndex(); renderSearchMore(q); return;
   }
@@ -693,6 +738,8 @@ function renderPoem(id){
       hasSv ? "ابحث عن تسجيلات أخرى في صوت الشيعة مباشرة" : "ابحث عن تسجيلاتها في صوت الشيعة");
     v.append(el("div", { class: "row gap" }, b2, m2));
   }
+  const oc = outsideCard(p, page);
+  if (oc) v.append(oc);
   const alts = (page && page.alts) || [];
   if (alts.length){
     v.append(el("div", { class: "card" }, el("h3", { class: "sec", text: "قد تقصد أيضاً" }),
@@ -1063,13 +1110,54 @@ function addForm(poem, guessTitle){
 }
 
 /* ---------- settings ---------- */
+let savedKeysExist = null;                     // checked once: are this owner's keys saved in the repository?
 function renderSmartCard(){
   const c = $("#smartCard"); c.replaceChildren();
   const on = S.ready(), yt = S.hasYouTube();
+  if (!on && savedKeysExist){
+    c.append(el("span", { class: "dot off" }), el("div", null, el("b", { text: "مفاتيحك محفوظة" }),
+      el("small", { text: "استرجعها على هذا الجهاز بكلمة السر ليعمل التعرّف الذكي هنا." })), el("span", { class: "go", text: "استرجعها" }));
+    return;
+  }
   c.append(el("span", { class: "dot " + (on ? "on" : "off") }),
     el("div", null, el("b", { text: on ? "التعرّف الذكي مفعّل" : "التعرّف الذكي غير مفعّل" }),
       el("small", { text: on ? (yt ? "يتعرّف على أي قصيدة ويبحث عن تسجيلها." : "يقرأ أي قصيدة. أضف مفتاح يوتيوب ليجد تسجيلها.") : "حالياً يتعرّف على قصائد الفهرس فقط. فعّله ليتعرّف على أي قصيدة." })),
     el("span", { class: "go", text: on ? "الإعدادات" : "فعّله" }));
+}
+/* ---------- keys on every device ---------- */
+const KS = window.QKeySync;
+if (KS && !S.ready()) KS.latest().then((f) => { savedKeysExist = !!f; renderSmartCard(); }).catch(() => {});
+if (KS){
+  const msg = $("#syncMsg"), say = (t, cls) => { msg.className = "small " + (cls || "muted"); msg.textContent = t; };
+  $("#syncSave").addEventListener("click", async () => {
+    const k = S.keys(), p1 = $("#syncPass").value, row2 = $("#syncPass2Row");
+    if (!k.gemini && !k.youtube){ say("لا مفاتيح على هذا الجهاز لحفظها. أضفها أعلاه أولاً.", "err"); return; }
+    if (p1.length < 12){ say("كلمة السر قصيرة: ١٢ حرفاً على الأقل.", "err"); $("#syncPass").focus(); return; }
+    if (row2.hidden){ row2.hidden = false; $("#syncPass2").focus(); say("أعد كتابة كلمة السر للتأكيد، ثم اضغط «احفظ» مرة أخرى."); return; }
+    if ($("#syncPass2").value !== p1){ say("كلمتا السر غير متطابقتين.", "err"); return; }
+    say("أشفّر المفاتيح…");
+    const blob = await KS.seal(k, p1);
+    const url = KS.saveUrl(blob);
+    window.open(url, "_blank", "noopener");
+    say("فُتحت صفحة GitHub وفيها الملف المشفّر: اضغط «Commit changes» هناك. إن لم تُفتح الصفحة، اضغط هنا.", "ok");
+    msg.append(" ", el("a", { href: url, target: "_blank", rel: "noopener" }, "افتح صفحة الحفظ"));
+    row2.hidden = true; $("#syncPass2").value = "";
+  });
+  $("#syncLoad").addEventListener("click", async () => {
+    const p1 = $("#syncPass").value;
+    if (!p1){ say("اكتب كلمة السر أولاً.", "err"); $("#syncPass").focus(); return; }
+    const b = $("#syncLoad"); b.disabled = true; say("أجلب الملف المشفّر وأفك تشفيره…");
+    try {
+      const f = await KS.latest();
+      if (!f){ say("لا توجد مفاتيح محفوظة بعد. احفظها أولاً من الجهاز الذي فيه المفاتيح.", "err"); return; }
+      const k = await KS.open(f.blob, p1);
+      S.saveKeys(k); fillSettings(); renderSmartCard(); savedKeysExist = true;
+      $("#syncPass").value = "";
+      say("استُرجعت المفاتيح وحُفظت على هذا الجهاز ✓ (حُفظت في " + new Date(k.at).toLocaleDateString("ar-IQ") + ").", "ok");
+    } catch (e){
+      say(e.code === "wrong" ? "كلمة السر غير صحيحة." : e.code === "limit" ? "GitHub رفض الطلب مؤقتاً، أعد المحاولة بعد قليل." : "تعذّر جلب الملف الآن. تأكد من الاتصال.", "err");
+    } finally { b.disabled = false; }
+  });
 }
 function fillSettings(){
   const k = S.keys(); $("#kGemini").value = k.gemini; $("#kYoutube").value = k.youtube;

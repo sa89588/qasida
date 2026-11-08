@@ -25,7 +25,7 @@ let book = [];             // poems.json entries (curated, with Rafed audio)
 let keyIndex = new Map();  // title key -> entry index
 let prefIndex = new Map(); // first 8 letters of a title key -> entry indexes (to find other spellings)
 /* Poem words (hashed): which poem contains these words? */
-let lyr = [], lyrPost = new Map(), lyrIdf = new Map(), lyrMass = [], lyrByTitle = new Map();
+let lyr = [], lyrByTitle = new Map();
 
 function cleanTitle(title, artist) {
   let t = String(title || "").replace(/\([^)]*\)|\[[^\]]*\]|«|»/g, " ");
@@ -76,52 +76,68 @@ function build(shards, poems) {
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const B64I = new Int16Array(128).fill(-1); for (let i = 0; i < 64; i++) B64I[B64.charCodeAt(i)] = i;
 const codeInt = (s, o = 0) => (B64I[s.charCodeAt(o)] << 18) | (B64I[s.charCodeAt(o + 1)] << 12) | (B64I[s.charCodeAt(o + 2)] << 6) | B64I[s.charCodeAt(o + 3)];
-let lyrSize = null;
+/* The text index is flat: sorted word codes, their offsets into one postings array, and per-poem weights.
+   Built once per change of the collected texts and kept in IndexedDB, so opening the app restores it at once. */
+let LX = null;      // { codes: Int32Array (sorted), off: Int32Array, post: Int32Array, idf: Float32Array, mass: Float32Array, size: Uint16Array }
 function buildLyrics(docs) {
-  lyr = [];
-  const packs = [];
-  for (const d of [].concat(docs || [])) for (const p of (d && d.poems) || []) { lyr.push({ title: p[1], reciter: p[2], poet: p[3], url: p[4] }); packs.push(p[5] || ""); }
-  const N = lyr.length || 1;
-  // pass 1: document frequency per code
+  const meta = { titles: [], reciters: [], poets: [], urls: [] }, packs = [];
+  for (const d of [].concat(docs || [])) for (const p of (d && d.poems) || []) {
+    meta.titles.push(p[1]); meta.reciters.push(p[2]); meta.poets.push(p[3]); meta.urls.push(p[4]); packs.push(p[5] || "");
+  }
+  const N = packs.length;
   const df = new Map();
-  for (const pk of packs) for (let o = 0; o + 4 <= pk.length; o += 4) { const c = codeInt(pk, o); df.set(c, (df.get(c) || 0) + 1); }
-  // pass 2: postings, filled in place
-  lyrPost = new Map(); lyrIdf = new Map();
-  const fill = new Map();
-  for (const [c, n] of df) { lyrPost.set(c, new Int32Array(n)); fill.set(c, 0); lyrIdf.set(c, Math.log(1 + N / n)); }
-  lyrMass = new Float32Array(lyr.length); lyrSize = new Uint16Array(lyr.length);
+  let pairs = 0;
+  for (const pk of packs) for (let o = 0; o + 4 <= pk.length; o += 4) { const c = codeInt(pk, o); df.set(c, (df.get(c) || 0) + 1); pairs++; }
+  const codes = Int32Array.from(df.keys()).sort();
+  const slot = new Map(); codes.forEach((c, k) => slot.set(c, k));
+  const off = new Int32Array(codes.length + 1), idf = new Float32Array(codes.length);
+  for (let k = 0; k < codes.length; k++) { const n = df.get(codes[k]); off[k + 1] = off[k] + n; idf[k] = Math.log(1 + (N || 1) / n); }
+  const post = new Int32Array(pairs), fill = off.slice(0, codes.length);
+  const mass = new Float32Array(N), size = new Uint16Array(N);
   packs.forEach((pk, i) => {
     let m = 0;
-    for (let o = 0; o + 4 <= pk.length; o += 4) { const c = codeInt(pk, o); const k = fill.get(c); lyrPost.get(c)[k] = i; fill.set(c, k + 1); m += lyrIdf.get(c); }
-    lyrMass[i] = m; lyrSize[i] = Math.min(65535, pk.length / 4);
+    for (let o = 0; o + 4 <= pk.length; o += 4) { const k = slot.get(codeInt(pk, o)); post[fill[k]++] = i; m += idf[k]; }
+    mass[i] = m; size[i] = Math.min(65535, pk.length / 4);
   });
+  return { meta, codes, off, post, idf, mass, size };
+}
+function useLyrics(built) {
+  LX = built || null;
+  const m = built ? built.meta : { titles: [] };
+  lyr = m.titles.map((t, i) => ({ title: t, reciter: m.reciters[i], poet: m.poets[i], url: m.urls[i] }));
   lyrByTitle = new Map(lyr.map((p, i) => [M.compact(p.title), i]));
   return lyr.length;
+}
+function slotOf(c) {                       // binary search in the sorted codes
+  const a = LX.codes; let lo = 0, hi = a.length - 1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1, v = a[mid]; if (v === c) return mid; if (v < c) lo = mid + 1; else hi = mid - 1; }
+  return -1;
 }
 
 /* Words typed, spoken or read from a page → poems that contain them.
    Rare words count more than common ones (each word weighs log(1 + N/df)). */
 function searchLyrics(text, typed) {
-  if (!lyr.length) return [];
+  if (!LX || !lyr.length) return [];
   const q = [...new Set(Wd.words(text).map((w) => codeInt(Wd.code(w))))];
   if (!q.length) return [];
   const unknown = Math.log(1 + lyr.length);
   let qMass = 0;
   const mass = new Map(), count = new Map();
   for (const h of q) {
-    const w = lyrIdf.get(h) ?? unknown; qMass += w;
-    const a = lyrPost.get(h); if (!a) continue;
-    for (const i of a) { mass.set(i, (mass.get(i) || 0) + w); count.set(i, (count.get(i) || 0) + 1); }
+    const k = slotOf(h);
+    const w = k >= 0 ? LX.idf[k] : unknown; qMass += w;
+    if (k < 0) continue;
+    for (let x = LX.off[k], end = LX.off[k + 1]; x < end; x++) { const i = LX.post[x]; mass.set(i, (mass.get(i) || 0) + w); count.set(i, (count.get(i) || 0) + 1); }
   }
   const out = [];
   for (const [i, m] of mass) {
-    const n = count.get(i), cov = m / Math.min(qMass, lyrMass[i] || qMass);
+    const n = count.get(i), cov = m / Math.min(qMass, LX.mass[i] || qMass);
     let s = 0;
     if (!typed) { if (n >= 5 && cov >= 0.3) s = 0.55 + 0.45 * Math.min(1, cov / 0.6); }
     else if (q.length === 1) s = 0.72;                                  // one word: every poem that has it
     else if (q.length <= 3) { if (n === q.length) s = 0.82; else if (n >= 2 && cov >= 0.6) s = 0.7; }
     else if (n >= 3 && cov >= 0.55) s = 0.55 + 0.45 * Math.min(1, cov);
-    if (s && lyrSize[i] > 450) s *= 0.86;            // a post bundling many poems matches a little of everything
+    if (s && LX.size[i] > 450) s *= 0.86;            // a post bundling many poems matches a little of everything
     if (s) out.push({ i, s, cov });
   }
   out.sort((a, b) => b.s - a.s || b.cov - a.cov);
@@ -323,14 +339,46 @@ function byArtist(text) {
   return best;
 }
 
+/* The worker reads the collected texts from IndexedDB itself (no copying through the page),
+   and keeps the built index there under "built:lyrics", keyed by the chunks' fingerprints. */
+const wdb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open("qasida-lite", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("shards");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("shards", mode); const q = fn(t.objectStore("shards")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
+  return { get: (k) => tx("readonly", (st) => st.get(k)).catch(() => null), put: (k, v) => tx("readwrite", (st) => st.put(v, k)).catch(() => {}) };
+})();
+async function lyricsFrom(parts) {
+  if (!parts || !parts.length) return useLyrics(null);
+  const key = parts.map((p) => p.file + ":" + p.hash).join("|");
+  const cached = await wdb.get("built:lyrics");
+  if (cached && cached.key === key) return useLyrics(cached.built);
+  const docs = [];
+  let complete = true;
+  for (const p of parts) { const saved = await wdb.get(p.file); if (saved && saved.data) docs.push(saved.data); else complete = false; }
+  if (!docs.length) return lyr.length;                 // nothing stored yet: keep what we have
+  const built = buildLyrics(docs);
+  if (complete) await wdb.put("built:lyrics", { key, built });
+  return useLyrics(built);
+}
+
 if (typeof self !== "undefined" && typeof module === "undefined") {
-  self.onmessage = (ev) => {
-    const m = ev.data;
+  let queue = Promise.resolve();                       // messages handled in order (loading is async)
+  self.onmessage = (ev) => { const m = ev.data; queue = queue.then(() => handle(m)); };
+  async function handle(m) {
     try {
-      if (m.type === "load") { SHARDS = m.shards; const info = build(m.shards, m.poems); info.poems = buildLyrics(m.lyrics); self.postMessage({ type: "ready", ...info }); }
+      if (m.type === "load") {
+        SHARDS = m.shards; const info = build(m.shards, m.poems);
+        if (m.lyricsParts !== undefined) info.poems = await lyricsFrom(m.lyricsParts); else info.poems = lyr.length;
+        self.postMessage({ type: "ready", ...info });
+      }
+      else if (m.type === "lyrics") { const n = await lyricsFrom(m.parts); self.postMessage({ type: "lyrics-ready", poems: n }); }
       else if (m.type === "query") { const results = query(m.text, m.typed); const artist = m.typed ? byArtist(m.text) : null; self.postMessage({ type: "result", id: m.id, results, artist }); }
-    } catch (e) { self.postMessage({ type: "error", id: m.id, message: String(e && e.message || e) }); }
-  };
+    } catch (e) { self.postMessage({ type: m.type === "query" ? "error" : "ready", id: m.id, message: String(e && e.message || e), entries: entries.length, tracks: 0, poems: lyr.length }); }
+  }
 } else {
-  module.exports = { build: (s, p, l) => { SHARDS = s; const r = build(s, p); r.poems = buildLyrics(l); return r; }, query, cleanTitle, byArtist, searchLyrics };
+  module.exports = { build: (s, p, l) => { SHARDS = s; const r = build(s, p); r.poems = useLyrics(l ? buildLyrics(l) : null); return r; }, query, cleanTitle, byArtist, searchLyrics, buildLyrics, useLyrics };
 }

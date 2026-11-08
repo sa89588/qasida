@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 <header class="appbar">
@@ -157,6 +157,28 @@
       <p class="muted small">عند التعرّف الذكي تُرسل صورة الصفحة إلى Google لقراءتها. أما القصائد الموجودة في الفهرس فتُقرأ على هاتفك دون إرسال شيء.</p>
     </div>
 
+    <div class="card" id="syncCard">
+      <h3 class="card-t">مفاتيحي على كل أجهزتي</h3>
+      <p class="muted small">احفظ المفتاحين مرة واحدة، مشفّرين بكلمة سر، في مستودعك على GitHub. بعدها افتح التطبيق من أي جهاز (آيباد، هاتف آخر) واسترجعهما بكلمة السر نفسها. يُحفظ النص المشفّر فقط؛ لا يُفتح بدون كلمة السر.</p>
+      <label class="f" for="syncPass"><span>كلمة السر (١٢ حرفاً على الأقل — مثلاً أربع كلمات لا يعرفها غيرك)</span>
+        <input type="password" id="syncPass" autocomplete="off" spellcheck="false"></label>
+      <label class="f" for="syncPass2" id="syncPass2Row" hidden><span>أعد كتابة كلمة السر</span>
+        <input type="password" id="syncPass2" autocomplete="off" spellcheck="false"></label>
+      <div class="row gap">
+        <button type="button" class="btn" id="syncLoad">استرجع مفاتيحي هنا</button>
+        <button type="button" class="btn" id="syncSave">احفظ مفاتيحي مشفّرة</button>
+      </div>
+      <p class="small" id="syncMsg" aria-live="polite"></p>
+      <details class="howto"><summary>كيف يعمل الحفظ؟</summary>
+        <ol>
+          <li>يشفّر التطبيق المفتاحين على هذا الجهاز بكلمة السر (لا تُرسل كلمة السر إلى أي مكان).</li>
+          <li>تُفتح صفحة GitHub لإنشاء ملف في مستودعك وفيها النص المشفّر جاهزاً؛ اضغط <b>Commit changes</b> (يجب أن تكون مسجّلاً في GitHub).</li>
+          <li>على الجهاز الآخر: افتح الإعدادات، اكتب كلمة السر، واضغط «استرجع مفاتيحي هنا».</li>
+          <li>لتغيير المفاتيح لاحقاً احفظها من جديد؛ يُؤخذ أحدث ملف دائماً.</li>
+        </ol>
+      </details>
+    </div>
+
     <div class="card">
       <h3 class="card-t">سرعة التعرّف الذكي</h3>
       <div class="seg" role="radiogroup" aria-label="سرعة التعرّف" id="modeSeg">
@@ -205,7 +227,7 @@
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small" id="verLine">الإصدار ١٦</p>
+      <p class="muted small" id="verLine">الإصدار ١٧</p>
     </div>
   </section>
 </main>
@@ -248,13 +270,14 @@
 </div>
 
 <audio id="audio" preload="metadata"></audio>
-<script src="vendor/tesseract/tesseract.min.js?v=16"></script>
-<script src="match.js?v=16"></script>
-<script src="smart.js?v=16"></script>
-<script src="voice.js?v=16"></script>
-<script src="media.js?v=16"></script>
-<script src="sources.js?v=16"></script>
-<script src="lite/library.js?v=6"></script>
-<script src="app.js?v=16"></script>
+<script src="vendor/tesseract/tesseract.min.js?v=17"></script>
+<script src="match.js?v=17"></script>
+<script src="smart.js?v=17"></script>
+<script src="voice.js?v=17"></script>
+<script src="media.js?v=17"></script>
+<script src="sources.js?v=17"></script>
+<script src="lite/library.js?v=7"></script>
+<script src="keysync.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

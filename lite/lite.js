@@ -23,9 +23,10 @@ function work(t, pct) {
   $("#workP").parentElement.hidden = pct == null;
 }
 
+QLib.onChange(() => showCatalog());
 async function loadCatalog(force) {
   status("أجهّز الفهرس…");
-  await QLib.load(force, (t, p) => work(t, p));
+  await QLib.load(force, (t, p) => { if (t == null) work(null); else if (!QLib.info.tracks) work(t, p); });
   work(null);
   showCatalog();
   if (!catalog.manifest) status("فهرس صوت الشيعة يُجمع الآن ولم يصل بعد — البحث الآن في قصائد الكتاب فقط.");
@@ -357,9 +358,7 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js?v=1", { scope: "./" }).catch(() => {});
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (had) location.reload(); });
 }
-document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState !== "visible" || !(catalog.partial || !catalog.manifest)) return;
-  const m = await fetchData("manifest.json", true);
-  if (m && m.updated !== catalog.updated) { store.set("manifest", m); location.reload(); }
+document.addEventListener("visibilitychange", () => {          // back to the app: pick up what the server collected meanwhile
+  if (document.visibilityState === "visible" && Date.now() - (QLib.info.checked || 0) > 30 * 60e3) QLib.checkNow().catch(() => {});
 });
 loadCatalog(false).catch(() => { work(null); status("تعذّر تحميل الفهرس. تحقق من الاتصال ثم أعد فتح التطبيق.", true); });
