@@ -3,7 +3,7 @@ name: فهرس صوت الشيعة
 on:
   push:
     branches: [main]
-    paths: ["tools/catalog/**", ".github/workflows/catalog.yml"]
+    paths: ["tools/catalog/**", "tools/lyrics/**", "lite/words.js", "match.js", ".github/workflows/catalog.yml"]
   schedule:
     - cron: "23 */4 * * *"
   workflow_dispatch:
@@ -32,6 +32,11 @@ jobs:
       - name: Is a run due?
         id: due
         run: mkdir -p data && node tools/catalog/due.mjs data
+      - name: Poem texts (weekly)
+        id: lyrics
+        env:
+          FORCE: ${{ github.event_name == 'push' && contains(join(github.event.commits.*.modified, ' '), 'tools/lyrics') && '1' || '' }}
+        run: node tools/lyrics/collect.mjs data
       - name: Collect, publishing every 30 minutes
         if: steps.due.outputs.run == 'true'
         env:
@@ -39,17 +44,13 @@ jobs:
           CRAWL_DELAY_MS: "900"
           PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         run: |
-          publish() {
-            rm -rf /tmp/pub && cp -r data /tmp/pub && rm -rf /tmp/pub/.git && cd /tmp/pub
-            git init -q -b data
-            git config user.name "qasida-catalog"
-            git config user.email "actions@users.noreply.github.com"
-            git add -A && git commit -qm "catalog $(date -u +%F-%H%M)"
-            git push -qf "$PUSH_URL" data
-            cd "$GITHUB_WORKSPACE"
-          }
           for i in 1 2 3 4 5 6 7; do
             node tools/catalog/crawl.mjs data
-            publish
+            tools/catalog/publish.sh
             if node -e "process.exit(JSON.parse(require('fs').readFileSync('data/state.json','utf8')).done ? 0 : 1)"; then echo "catalog complete"; break; fi
           done
+      - name: Publish poem texts
+        if: steps.due.outputs.run != 'true' && steps.lyrics.outputs.changed == 'true'
+        env:
+          PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: tools/catalog/publish.sh
