@@ -14,6 +14,7 @@ const M = require("../../match.js");
 const W = require("../../lite/words.js");
 
 const OUT = process.argv[2] || "data";
+const FORMAT = 2;   // bump when the collector changes: a new format is collected again at once
 const UA = "qasida-reader-catalog/1.0 (+https://github.com/sa89588/qasida)";
 const DELAY = +(process.env.LYRICS_DELAY_MS || 1200);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -135,7 +136,7 @@ async function fromAghani(reciters) {
 export async function main() {
   const file = path.join(OUT, "lyrics.json");
   const old = JSON.parse(await fs.readFile(file, "utf8").catch(() => "null"));
-  const fresh = old && Date.now() - Date.parse(old.updated) < 7 * 864e5;
+  const fresh = old && old.format === FORMAT && Date.now() - Date.parse(old.updated) < 7 * 864e5;
   if (fresh && !process.env.FORCE) { console.log("poem texts are fresh"); return false; }
   const reciters = await knownReciters();
   const all = [...await fromDoro(reciters), ...await fromAghani(reciters)];
@@ -149,7 +150,7 @@ export async function main() {
   const poems = [...byKey.values()].map((p) => [p.title, p.reciter, p.poet, p.url, W.hashWords(p.body.join("\n")).join(" ")]);
   if (poems.length < 50 && old?.poems?.length > poems.length) { console.log("too few poems read; keeping the previous index"); return false; }
   await fs.mkdir(OUT, { recursive: true });
-  await fs.writeFile(file, JSON.stringify({ updated: new Date().toISOString(), count: poems.length,
+  await fs.writeFile(file, JSON.stringify({ updated: new Date().toISOString(), format: FORMAT, count: poems.length,
     note: "words are hashed (FNV-1a, base36) and unordered; read the poem at its url", poems }));
   console.log(`poem texts: ${poems.length} (doro + aghani read: ${all.length})`);
   return true;
