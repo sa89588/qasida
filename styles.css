@@ -277,3 +277,15 @@ code{font-size:.85em;background:var(--surface);padding:1px 5px;border-radius:5px
 .svmeta .chip{margin-inline-start:auto;padding:5px 10px;font-size:.8rem}
 .svlogo{font-size:.72rem;font-weight:600;padding:2px 10px;border-radius:999px;background:#1f1f1f;color:#f3a54a;border:1px solid #f3a54a55}
 .chip{text-decoration:none}
+
+/* favourites, lists, repeat */
+.favrow{margin-top:8px;align-items:center}
+.favrow .chip.on{color:var(--crimson);border-color:color-mix(in srgb,var(--crimson) 45%,var(--line))}
+.chip.rep[aria-pressed="true"]{color:var(--brass);border-color:var(--brass)}
+.lrow{display:flex;align-items:center;gap:6px}
+.lrow .rec{flex:1;min-width:0}
+.icon-x{flex:none;width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:1.3rem;cursor:pointer}
+.listcard .lname{display:flex;flex-direction:column;text-decoration:none;color:var(--ink);min-width:0}
+.listcard .lname b{font-weight:600}
+.sheet-in input[type=text]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}
+#view-lists form.card input[type=text]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}

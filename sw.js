@@ -3,9 +3,9 @@
      the cached copy is used only when offline.
    - Reader files and icons (large, rarely change): cache first.
    - Audio and YouTube stream from their sources and are not cached. */
-const VERSION = "qasida-v17";
+const VERSION = "qasida-v18";
 const SHELL = [
-  "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "voice.js", "media.js", "sources.js", "keysync.js?v=17", "lite/library.js?v=7", "lite/search-worker.js?v=8", "lite/words.js?v=2", "poems.json", "manifest.webmanifest",
+  "./", "index.html", "styles.css", "app.js", "match.js", "smart.js", "voice.js", "media.js", "sources.js", "keysync.js?v=18", "lite/library.js?v=7", "lite/search-worker.js?v=8", "lite/words.js?v=2", "poems.json", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png",
   "vendor/tesseract/tesseract.min.js", "vendor/tesseract/worker.min.js"
 ];

@@ -4,7 +4,7 @@ const M = window.QMatch, S = window.QSmart;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const abs = (p) => new URL(p, location.href).href;
-const LS = { local: "qasida.localPoems.v1", extra: "qasida.extraRecordings.v1", pos: "qasida.audioPos.v1", hist: "qasida.history.v1", theme: "qasida.theme" };
+const LS = { local: "qasida.localPoems.v1", extra: "qasida.extraRecordings.v1", pos: "qasida.audioPos.v1", hist: "qasida.history.v1", theme: "qasida.theme", lists: "qasida.lists.v1", play: "qasida.play.v1" };
 
 const state = {
   base: [], poems: [], temp: null, view: "scan", poemId: null, page: null,
@@ -110,11 +110,15 @@ function route(){
   const h = location.hash.replace(/^#/, "");
   const m = h.match(/^p-([\w-]+)$/);
   let view = "scan";
+  const ml = h.match(/^list-([\w-]+)$/);
   if (m && poemById(m[1])){ view = "poem"; renderPoem(m[1]); }
+  else if (ml && lists().some((x) => x.id === ml[1])){ view = "lists"; if (state.listOpen !== ml[1] || !$("#view-lists .lstage")) renderList(ml[1]); }
+  else if (h === "lists"){ view = "lists"; renderLists(); }
   else if (h === "index" || h === "settings") view = h;
   if (view !== "scan" && state.stream) stopCamera();
-  if (view !== "poem") pauseMedia();
-  for (const v of ["scan", "poem", "index", "settings"]) $("#view-" + v).hidden = v !== view;
+  if (view !== "poem" && !(view === "lists" && ml)) pauseMedia();
+  if (!(view === "lists" && ml)) state.listOpen = null;
+  for (const v of ["scan", "poem", "index", "settings", "lists"]) $("#view-" + v).hidden = v !== view;
   const tab = view === "poem" ? null : view;
   $$(".tabbar a").forEach((a) => { if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (state.view !== view) window.scrollTo({ top: 0, behavior: "auto" });
@@ -713,15 +717,36 @@ function renderPoem(id){
       const label = r.type === "youtube" ? (r.note || "مقطع يوتيوب " + ar(++yn)) : r.type === "file" ? (r.name || "ملف من هاتفي") : r.type === "shiavoice" ? (r.note || p.title) : ("تسجيل صوتي " + ar(++an) + (r.source ? " · " + r.source : ""));
       const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: r.kind === "video" ? IC.film : IC.note });
       const tag = r.match === "good" ? el("span", { class: "tag", text: "مطابق" }) : r.match === "maybe" ? el("span", { class: "tag maybe", text: "محتمل" }) : el("span");
-      const b = el("button", { type: "button", class: "rec", "aria-current": i === 0 ? "true" : "false", onclick: () => { $$(".rec", list).forEach((x) => x.setAttribute("aria-current", "false")); b.setAttribute("aria-current", "true"); mount(stage, p, r, false); } },
+      const b = el("button", { type: "button", class: "rec", "aria-current": i === 0 ? "true" : "false", onclick: () => playAt(i, false) },
         th, el("span", { class: "tx" }, el("b", { text: label }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : r.type === "file" ? "من هاتفي" : r.type === "shiavoice" ? "صوت الشيعة" + (r.duration ? " · " + ar(r.duration) : "") : "", r.type === "audio" && r.note ? r.note : "", isSaved(r) && r.type === "audio" ? "دون إنترنت ✓" : ""].filter(Boolean).join(" · ") })), tag);
       list.append(b);
     });
+    // Play recording i; when it ends: repeat it, go on to the next, or stop (the repeat button decides).
+    const playAt = (i, auto) => {
+      $$(".rec", list).forEach((x, k) => x.setAttribute("aria-current", String(k === i)));
+      mount(stage, p, recs[i], auto, () => {
+        const rp = playPrefs().repeat;
+        if (rp === "one") playAt(i, true);
+        else if (rp === "all") playAt((i + 1) % recs.length, true);
+      });
+    };
     const card = el("div", { class: "card" }, stage);
-    if (recs.length > 1) card.append(el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), list);
+    if (recs.length > 1) card.append(el("div", { class: "row", style: "justify-content:space-between;align-items:center" },
+      el("h3", { class: "sec", text: "التسجيلات (" + ar(recs.length) + ")" }), repeatButton(recs.length > 1)), list);
+    else card.append(el("div", { class: "row", style: "justify-content:flex-end" }, repeatButton(false)));
     v.append(card);
-    const auto = !!(page && page.autoplay); if (page) page.autoplay = false;
-    mount(stage, p, recs[0], auto);
+    // Autoplay: asked for by the page, or the setting is on and this page is a search result (once per result).
+    const fromSearch = !!(page && (page.query || page.raw || page.verses || page.lib || page.smartNew));
+    let auto = !!(page && page.autoplay);
+    if (!auto && fromSearch && playPrefs().autoplay && !page.autoplayed) auto = true;
+    if (page) page.autoplay = false;
+    let first = 0;
+    if (auto){
+      if (page) page.autoplayed = true;
+      const k = recs.findIndex((x) => x.type !== "shiavoice");        // ShiaVoice's player cannot start by itself
+      if (k > 0) first = k;
+    }
+    playAt(first, auto);
   } else {
     const c = el("div", { class: "card" }, el("h3", { class: "card-t", text: "لا يوجد تسجيل بعد" }));
     if (page && page.ytErr === "quota") c.append(el("p", { class: "muted small", text: "انتهى حد بحث يوتيوب المجاني لليوم. يمكنك البحث يدوياً ثم لصق الرابط أدناه." }));
@@ -788,16 +813,21 @@ function ytApi(){
   return ytApiP;
 }
 
-function mount(stage, p, r, autoplay){
+/* onEnded: called when the recording finishes (audio, YouTube, video). ShiaVoice's player cannot tell us. */
+function mount(stage, p, r, autoplay, onEnded){
   pauseMedia();
   stage.replaceChildren();
-  if (r.type === "youtube") return mountYouTube(stage, p, r, autoplay);
-  if (r.type === "file" && r.kind === "video") return mountVideo(stage, p, r, autoplay);
+  state.onEnded = onEnded || null;
+  const done = () => { const f = state.onEnded; if (f) f(); };
+  if (r.type === "youtube"){ mountYouTube(stage, p, r, autoplay, done); stage.append(favRow(p, r)); return; }
+  if (r.type === "file" && r.kind === "video"){ mountVideo(stage, p, r, autoplay, done); stage.append(favRow(p, r)); return; }
   if (r.type === "shiavoice"){
     stage.append(el("div", { class: "svcard" },
       el("div", { class: "svwrap" }, el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + r.id, title: (r.note || p.title) + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" })),
       el("div", { class: "svmeta" }, el("span", { class: "svlogo", text: "صوت الشيعة" }), el("span", { class: "small muted", text: [r.reciter, r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") }),
-        el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تحميل"))));
+        el("a", { class: "chip", href: "https://shiavoice.com/play-" + r.id, target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تحميل"))),
+      favRow(p, r));
+    if (autoplay) stage.append(el("p", { class: "small muted", text: "مشغّل صوت الشيعة لا يبدأ وحده: اضغط ▶ فيه." }));
     return;
   }
   const a = $("#audio");
@@ -814,7 +844,8 @@ function mount(stage, p, r, autoplay){
   a.ontimeupdate = () => { sync(); if (Math.abs(a.currentTime - last) > 5){ last = a.currentTime; const ps = lsGet(LS.pos, {}); ps[src] = Math.floor(a.currentTime); lsSet(LS.pos, ps); } };
   a.onloadedmetadata = () => { const pos = lsGet(LS.pos, {})[src]; if (pos && pos < a.duration - 5) a.currentTime = pos; sync(); };
   a.onerror = () => { ui.err.hidden = false; };
-  stage.append(ui.root, mediaActions(p, r)); sync();
+  a.onended = done;
+  stage.append(ui.root, mediaActions(p, r), favRow(p, r)); sync();
   setAudioSource(a, r).then(() => { sync(); if (autoplay){ a.play().catch(() => {}); setSession(p, r); } }).catch(() => { ui.err.hidden = false; });
 }
 
@@ -845,7 +876,7 @@ function playerUI(p, r){
   return ui;
 }
 
-function mountYouTube(stage, p, r, autoplay){
+function mountYouTube(stage, p, r, autoplay, onEnded){
   const box = el("div", { class: "yt" });
   const slot = el("div");
   box.append(slot);
@@ -874,7 +905,8 @@ function mountYouTube(stage, p, r, autoplay){
           ytTimer = setInterval(() => { if (!box.isConnected){ clearInterval(ytTimer); return; } try { ui.sync(pl.getPlayerState() === 1, pl.getCurrentTime(), pl.getDuration()); } catch {} }, 400);
           if (autoplay){ try { pl.playVideo(); setSession(p, r); } catch {} }
         },
-        onError: () => { ui.err.hidden = false; }
+        onError: () => { ui.err.hidden = false; },
+        onStateChange: (e) => { if (e.data === 0 && onEnded) onEnded(); }      // 0 = ended
       }
     });
   }).catch(fallback);
@@ -889,6 +921,128 @@ function pauseMedia(){
   try { ytPlayer && ytPlayer.destroy(); } catch {}
   ytPlayer = null;
   $$("#view-poem .yt iframe").forEach((f) => f.remove());
+}
+
+/* ---------- favourites, playlists, repeat, autoplay ---------- */
+const recKey = (r) => r.type + ":" + (r.id || r.key || r.src || r.url || "");
+function lists(){
+  const l = lsGet(LS.lists, null) || [];
+  if (!l.some((x) => x.id === "fav")) l.unshift({ id: "fav", name: "المفضلة", items: [] });
+  return l;
+}
+const saveLists = (l) => lsSet(LS.lists, l);
+const playPrefs = () => Object.assign({ autoplay: false, repeat: "off" }, lsGet(LS.play, {}));
+function setPlayPref(k, v){ const p = playPrefs(); p[k] = v; lsSet(LS.play, p); }
+const inList = (id, r) => { const L = lists().find((x) => x.id === id); return !!(L && L.items.some((it) => it.k === recKey(r))); };
+function addToList(id, p, r){
+  const l = lists(), L = l.find((x) => x.id === id), k = recKey(r);
+  if (!L || L.items.some((it) => it.k === k)) return false;
+  const rec = Object.assign({}, r); delete rec.blob;
+  L.items.push({ k, rec, title: p.title, poet: p.poet || "", poemId: p.temp ? null : p.id, at: Date.now() });
+  saveLists(l); return true;
+}
+function removeFromList(id, k){ const l = lists(), L = l.find((x) => x.id === id); if (!L) return; L.items = L.items.filter((it) => it.k !== k); saveLists(l); }
+function newList(name){ const l = lists(); const L = { id: "l" + Date.now().toString(36), name: name.trim().slice(0, 40) || "قائمة جديدة", items: [] }; l.push(L); saveLists(l); return L; }
+const REPEAT = { off: ["بلا تكرار", "↦"], one: ["كرّر هذا", "🔂"], all: ["كرّر الكل", "🔁"] };
+/* Repeat: off → this one → all (all = go on to the next and start over at the end). */
+function repeatButton(hasMany){
+  const order = hasMany ? ["off", "one", "all"] : ["off", "one"];
+  const b = el("button", { type: "button", class: "chip rep" });
+  const paint = () => { let v = playPrefs().repeat; if (!order.includes(v)) v = "off"; b.replaceChildren(el("span", { "aria-hidden": "true", text: REPEAT[v][1] }), REPEAT[v][0]);
+    b.setAttribute("aria-label", "التكرار: " + REPEAT[v][0]); b.setAttribute("aria-pressed", String(v !== "off")); };
+  b.addEventListener("click", () => { let v = playPrefs().repeat; const i = order.indexOf(v); setPlayPref("repeat", order[(i + 1) % order.length]); paint(); });
+  paint(); return b;
+}
+/* Under every player: add to favourites, add to a list. */
+function favRow(p, r){
+  const row = el("div", { class: "mact favrow" });
+  const msg = el("span", { class: "small muted", "aria-live": "polite" });
+  const heart = el("button", { type: "button", class: "chip" });
+  const paint = () => { const on = inList("fav", r); heart.replaceChildren(el("span", { "aria-hidden": "true", text: on ? "♥" : "♡" }), on ? "في المفضلة" : "أضف إلى المفضلة"); heart.setAttribute("aria-pressed", String(on)); heart.classList.toggle("on", on); };
+  heart.addEventListener("click", () => { if (inList("fav", r)){ removeFromList("fav", recKey(r)); msg.textContent = "أُزيلت من المفضلة."; } else { addToList("fav", p, r); msg.textContent = "أُضيفت إلى المفضلة."; } paint(); });
+  paint();
+  row.append(heart, el("button", { type: "button", class: "chip", onclick: () => pickList(p, r, msg) }, el("span", { "aria-hidden": "true", text: "＋" }), "أضف إلى قائمة"), msg);
+  return row;
+}
+/* A small sheet: choose a list, or name a new one. */
+function pickList(p, r, msg){
+  const close = () => sheet.remove();
+  const name = el("input", { type: "text", placeholder: "اسم قائمة جديدة، مثلاً: محرم ١٤٤٨", "aria-label": "اسم القائمة الجديدة" });
+  const add = (L) => { const ok = addToList(L.id, p, r); msg.textContent = ok ? "أُضيفت إلى «" + L.name + "»." : "موجودة في «" + L.name + "» من قبل."; close(); };
+  const sheet = el("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": "أضف إلى قائمة", onclick: (e) => { if (e.target === sheet) close(); } },
+    el("div", { class: "sheet-in" }, el("h2", { text: "أضف إلى قائمة" }),
+      el("div", { class: "cands", style: "width:100%" }, lists().map((L) => el("button", { type: "button", class: "btn", onclick: () => add(L) }, L.name + " · " + ar(L.items.length)))),
+      el("form", { class: "row gap", style: "width:100%", onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) { name.focus(); return; } add(newList(name.value)); } },
+        name, el("button", { type: "submit", class: "btn primary" }, "أنشئ وأضف")),
+      el("button", { type: "button", class: "btn", onclick: close }, "إلغاء")));
+  document.body.append(sheet); name.focus();
+}
+/* «قوائمي»: favourites and the person's lists. */
+function renderLists(){
+  const v = $("#view-lists"); v.replaceChildren();
+  v.append(el("div", { class: "view-head" }, el("h2", { id: "listsH", text: "قوائمي" })), el("p", { class: "muted small", text: "المفضلة وقوائم التشغيل: تُشغَّل متتالية، تسجيلاً بعد تسجيل." }));
+  for (const L of lists()){
+    v.append(el("div", { class: "card listcard" },
+      el("div", { class: "row", style: "justify-content:space-between;align-items:center;gap:8px" },
+        el("a", { class: "lname", href: "#list-" + L.id }, el("b", { text: (L.id === "fav" ? "♥ " : "") + L.name }), el("span", { class: "small muted", text: L.items.length ? countAr(L.items.length, W_TRACKS) : "فارغة" })),
+        L.items.length ? el("button", { type: "button", class: "btn primary", onclick: () => { state.autoStart = L.id; go("list-" + L.id); } }, "▶ شغّل الكل") : el("span"))));
+  }
+  const name = el("input", { type: "text", placeholder: "اسم القائمة", "aria-label": "اسم القائمة الجديدة" });
+  v.append(el("form", { class: "card row gap", onsubmit: (e) => { e.preventDefault(); if (!name.value.trim()) { name.focus(); return; } newList(name.value); renderLists(); } },
+    name, el("button", { type: "submit", class: "btn" }, "أنشئ قائمة")));
+  v.append(el("p", { class: "muted small", text: "لإضافة تسجيل: افتح قصيدة، شغّل التسجيل، ثم «أضف إلى المفضلة» أو «أضف إلى قائمة» تحته." }));
+}
+/* One list, played in order: when an item ends the next starts (repeat decides what happens at the end). */
+function renderList(id){
+  const L = lists().find((x) => x.id === id); if (!L) return;
+  state.listOpen = id;
+  const v = $("#view-lists"); v.replaceChildren();
+  const stage = el("div", { class: "player-stage lstage" });
+  const rows = el("div", { class: "recs" });
+  const nowT = el("p", { class: "small muted", id: "listNow", "aria-live": "polite" });
+  let idx = -1;
+  const pseudo = (it) => ({ id: it.poemId || "list-" + id, title: it.title, poet: it.poet, recordings: [], temp: !it.poemId });
+  const playIdx = (i, auto) => {
+    const items = lists().find((x) => x.id === id)?.items || [];
+    if (!items.length) return;
+    idx = (i + items.length) % items.length;
+    const it = items[idx];
+    $$(".rec", rows).forEach((x, k) => x.setAttribute("aria-current", String(k === idx)));
+    nowT.textContent = "يُشغَّل الآن " + ar(idx + 1) + " من " + ar(items.length) + (it.rec.type === "shiavoice" ? " — صوت الشيعة: اضغط ▶ في مشغّله، ثم «التالي» عند انتهائه." : "");
+    mount(stage, pseudo(it), it.rec, auto, () => {
+      const rp = playPrefs().repeat, n = (lists().find((x) => x.id === id)?.items || []).length;
+      if (rp === "one") playIdx(idx, true);
+      else if (idx + 1 < n) playIdx(idx + 1, true);
+      else if (rp === "all") playIdx(0, true);
+      else nowT.textContent = "انتهت القائمة.";
+    });
+  };
+  const paintRows = () => {
+    rows.replaceChildren();
+    L.items = lists().find((x) => x.id === id)?.items || [];
+    L.items.forEach((it, i) => {
+      const r = it.rec;
+      const th = r.type === "youtube" ? el("span", { class: "th", style: "background-image:url('https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg')" }) : el("span", { class: "th au", html: IC.note });
+      rows.append(el("div", { class: "lrow" },
+        el("button", { type: "button", class: "rec", "aria-current": String(i === idx), onclick: () => playIdx(i, true) },
+          th, el("span", { class: "tx" }, el("b", { text: it.title }), el("span", { text: [r.reciter, r.type === "youtube" ? "يوتيوب" : r.type === "shiavoice" ? "صوت الشيعة" : r.source || "", r.duration ? ar(r.duration) : ""].filter(Boolean).join(" · ") })), el("span")),
+        el("button", { type: "button", class: "icon-x", "aria-label": "أزل «" + it.title + "» من القائمة", onclick: () => { removeFromList(id, it.k); if (i < idx) idx--; paintRows(); } }, "×")));
+    });
+    if (!L.items.length) rows.append(el("p", { class: "muted small", text: "القائمة فارغة." }));
+  };
+  v.append(el("button", { type: "button", class: "back", onclick: () => go("lists") }, el("span", { html: IC.back }), "قوائمي"),
+    el("div", { class: "view-head" }, el("h2", { text: (id === "fav" ? "♥ " : "") + L.name })),
+    el("div", { class: "card" }, stage, nowT,
+      el("div", { class: "row gap", style: "justify-content:center" },
+        el("button", { type: "button", class: "btn", onclick: () => playIdx(idx - 1, true), "aria-label": "السابق" }, "السابق"),
+        el("button", { type: "button", class: "btn primary", onclick: () => playIdx(idx < 0 ? 0 : idx, true) }, "▶ شغّل"),
+        el("button", { type: "button", class: "btn", onclick: () => playIdx(idx + 1, true), "aria-label": "التالي" }, "التالي"),
+        repeatButton(true))),
+    el("div", { class: "card" }, rows),
+    id !== "fav" ? el("button", { type: "button", class: "btn", onclick: (e) => { const m = el("span", { class: "small" }); e.currentTarget.after(m); confirmInline(m, "ستُحذف القائمة «" + L.name + "».", () => { saveLists(lists().filter((x) => x.id !== id)); go("lists"); }); } }, "احذف القائمة") : el("span"));
+  paintRows();
+  if (state.autoStart === id){ state.autoStart = null; playIdx(0, true); }
+  else if (L.items.length) playIdx(0, false);
 }
 
 /* ---------- saved media (download / offline) ---------- */
@@ -986,11 +1140,11 @@ async function removeFileRecording(p, r){
   const local = lsGet(LS.local, []); const it = local.find((x) => x.id === p.id); if (it){ it.recordings = (it.recordings || []).filter((x) => x.key !== r.key); lsSet(LS.local, local); }
   rebuild(); await refreshSaved(); state.page = null; renderPoem(p.id);
 }
-function mountVideo(stage, p, r, autoplay){
+function mountVideo(stage, p, r, autoplay, onEnded){
   const v = el("video", { controls: true, playsinline: true, preload: "metadata", class: "vfile" });
   QM.get(r.key).then((item) => {
     if (!item || !item.blob){ stage.append(el("p", { class: "small err", text: "لم يعد الملف موجوداً على هذا الهاتف." })); return; }
-    v.src = URL.createObjectURL(item.blob); if (autoplay) v.play().catch(() => {});
+    v.src = URL.createObjectURL(item.blob); v.onended = () => onEnded && onEnded(); if (autoplay) v.play().catch(() => {});
   }).catch(() => {});
   stage.append(v, mediaActions(p, r));
 }
@@ -1159,7 +1313,9 @@ if (KS){
     } finally { b.disabled = false; }
   });
 }
+$("#autoPlay").addEventListener("change", (e) => setPlayPref("autoplay", e.target.checked));
 function fillSettings(){
+  $("#autoPlay").checked = !!playPrefs().autoplay;
   const k = S.keys(); $("#kGemini").value = k.gemini; $("#kYoutube").value = k.youtube;
   let t = "auto"; try { t = localStorage.getItem(LS.theme) || "auto"; } catch {}
   $$("#themeSeg button").forEach((b) => b.setAttribute("aria-checked", String(t === b.dataset.v)));
