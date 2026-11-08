@@ -183,12 +183,18 @@ function searchTyped(text) {
     return out;
   }
   const qn = trigrams(q).size || 1;
+  const qn2 = cleanTitle(text);
   const { hits, touched } = overlap(q);
   for (const i of touched) {
     const e = entries[i];
     const inTitle = hits[i] / qn, titleInQ = hits[i] / lens[i];
     if (inTitle < 0.5 && titleInQ < 0.7) continue;
-    let s = Math.max(M.dice(q, e.key), e.key.includes(q) ? 0.92 : 0, q.includes(e.key) && e.key.length >= 6 ? 0.9 : 0, inTitle * 0.85);
+    // Whole words only: "نيوتن" must not match "يبني وتنظر" through the joined letters.
+    const wordIn = (" " + e.title + " ").includes(" " + qn2 + " ");
+    const inner = !wordIn && e.key.includes(q);
+    const contains = q.includes(e.key) && e.key.length >= 6 && (" " + qn2 + " ").includes(" " + e.title + " ");
+    let s = Math.max(M.dice(q, e.key), wordIn ? 0.92 : 0, inner ? 0.6 : 0,
+      contains ? 0.6 + 0.3 * (e.key.length / q.length) : 0, inTitle * 0.85 * (wordIn || contains ? 1 : 0.85));
     s *= e.weight;
     s += Math.min(0.04, e.recs.length * 0.004);
     if (s >= 0.5) out.push({ i, s });
@@ -224,6 +230,7 @@ function query(text, typed) {
   }
   // Poems whose words contain what was typed or read: the original poem, then its recordings by title.
   const lyrSeen = new Set();
+  const titleScore = new Map(found.map((x) => [x.i, x.s]));
   for (const { i, s } of searchLyrics(text, typed)) {
     const L = lyr[i];
     const tk = M.compact(L.title);
@@ -231,7 +238,7 @@ function query(text, typed) {
     const idx = entryFor(L.title, L.reciter);
     let recs = [];
     if (idx >= 0) { if (seen.has(idx)) continue; seen.add(idx); recs = entries[idx].recs.map(rec); }
-    results.push({ title: L.title, score: Math.min(1, s), lyric: { url: L.url, poet: L.poet, reciter: L.reciter },
+    results.push({ title: L.title, score: Math.min(1, Math.max(s, idx >= 0 ? titleScore.get(idx) || 0 : 0)), lyric: { url: L.url, poet: L.poet, reciter: L.reciter },
       recs: sortRecs(recs, text + " " + L.reciter).slice(0, 60), total: recs.length });
     if (results.length >= 12) break;
   }
