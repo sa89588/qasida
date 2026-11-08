@@ -27,6 +27,17 @@
     return (h >>> 0).toString(36);
   }
   const hashWords = (text) => [...new Set(words(text).map(hash))];
-  const api = { words, stem, hash, hashWords };
+  /* Compact form (format 3): 24-bit hash → 4 base64url characters, packed without separators. */
+  const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  function code(w) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < w.length; i++) { h ^= w.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    h = (h ^ (h >>> 24)) & 0xffffff;
+    return B64[h >> 18] + B64[(h >> 12) & 63] + B64[(h >> 6) & 63] + B64[h & 63];
+  }
+  const codeWords = (text) => [...new Set(words(text).map(code))];
+  const pack = (codes) => codes.join("");
+  function unpack(s) { const out = []; for (let i = 0; i + 4 <= s.length; i += 4) out.push(s.slice(i, i + 4)); return out; }
+  const api = { words, stem, hash, hashWords, code, codeWords, pack, unpack };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.QWords = api;
 })(typeof self !== "undefined" ? self : this);

@@ -24,7 +24,8 @@
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     }));
     const tx = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction("shards", mode); const q = fn(t.objectStore("shards")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
-    return { get: (k) => tx("readonly", (s) => s.get(k)).catch(() => null), put: (k, v) => tx("readwrite", (s) => s.put(v, k)).catch(() => {}) };
+    return { get: (k) => tx("readonly", (s) => s.get(k)).catch(() => null), put: (k, v) => tx("readwrite", (s) => s.put(v, k)).catch(() => {}),
+             del: (k) => tx("readwrite", (s) => s.delete(k)).catch(() => {}) };
   })();
 
   async function fetchData(name, fresh) {
@@ -41,17 +42,51 @@
     return Object.keys(manifest?.sections || {}).filter((s) => saved ? saved.includes(s) : (SECTIONS[s]?.[1] ?? true));
   }
 
-  const worker = new Worker(BASE + "search-worker.js?v=4");
+  const worker = new Worker(BASE + "search-worker.js?v=5");
   let qid = 0; const pending = new Map();
   let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
-  const info = { tracks: 0, poems: 0, manifest: null, updated: null, partial: false, loaded: false };
+  let reloaded = null;                                 // resolves when a later load (check now) is indexed
+  const info = { tracks: 0, poems: 0, manifest: null, lyricsIndex: null, updated: null, partial: false, loaded: false, checked: 0 };
   worker.onmessage = (ev) => {
     const m = ev.data;
-    if (m.type === "ready") { info.tracks = m.tracks; info.poems = m.poems || 0; info.loaded = true; readyResolve(); }
+    if (m.type === "ready") { info.tracks = m.tracks; info.poems = m.poems || 0; info.loaded = true; readyResolve(); if (reloaded) { reloaded(); reloaded = null; } }
     else if (m.type === "result" || m.type === "error") { const p = pending.get(m.id); pending.delete(m.id); p && (m.type === "error" ? p.reject(new Error(m.message)) : p.resolve(m)); }
   };
   function ask(text, typed) {
     return ready.then(() => new Promise((resolve, reject) => { const id = ++qid; pending.set(id, { resolve, reject }); worker.postMessage({ type: "query", id, text, typed }); }));
+  }
+
+  /* Download what changed since last time (each section and each text chunk has a fingerprint),
+     keep it in IndexedDB, and hand everything to the search worker. */
+  async function gather(force, say) {
+    const [poemsDoc, freshMan, freshLyr] = await Promise.all([
+      fetch(BASE + "../poems.json?v=13").then((r) => r.json()).catch(() => ({ poems: [] })),
+      fetchData("manifest.json", true),
+      fetchData("lyrics-index.json", true)
+    ]);
+    const manifest = freshMan || store.get("manifest", null);
+    if (freshMan) store.set("manifest", freshMan);
+    const lindex = freshLyr || store.get("lyricsIndex", null);
+    if (freshLyr) store.set("lyricsIndex", freshLyr);
+    info.manifest = manifest; info.lyricsIndex = lindex; info.updated = manifest?.updated || null;
+    info.partial = !!manifest && manifest.complete === false; info.checked = Date.now();
+    let fetched = 0;
+    const want = chosen(manifest), parts = want.map((s) => [s, manifest.sections[s]]).concat((lindex?.chunks || []).map((c) => ["", c]));
+    const shards = [], lyrics = [];
+    let i = 0;
+    for (const [s, part] of parts) {
+      const key = part.hash || manifest?.updated;          // older manifests had no per-part fingerprint
+      let saved = await idb.get(part.file);
+      if (!saved || saved.hash !== key || force === "all") {
+        say(s ? `أنزّل قسم ${SECTIONS[s]?.[0] || s}…` : "أنزّل كلمات القصائد…", i / parts.length);
+        const data = await fetchData(part.file, true);
+        if (data) { saved = { hash: key, data }; await idb.put(part.file, saved); fetched++; }
+      }
+      if (saved) (s ? shards : lyrics).push(saved.data);
+      i++;
+    }
+    idb.del("lyrics.json");                                // the old single-file text index
+    return { shards, lyrics, poems: poemsDoc.poems || [], fetched };
   }
 
   let loading = null;
@@ -59,43 +94,32 @@
     if (loading && !force) return loading;
     return (loading = (async () => {
       const say = (t, p) => { try { onProgress && onProgress(t, p); } catch {} };
-      const [poemsDoc, fresh] = await Promise.all([
-        fetch(BASE + "../poems.json?v=13").then((r) => r.json()).catch(() => ({ poems: [] })),
-        fetchData("manifest.json", true)
-      ]);
-      const manifest = fresh || store.get("manifest", null);
-      if (fresh) store.set("manifest", fresh);
-      info.manifest = manifest; info.updated = manifest?.updated || null; info.partial = !!manifest && manifest.complete === false;
-      const shards = [];
-      const want = chosen(manifest);
-      let i = 0;
-      for (const s of want) {
-        const sec = manifest.sections[s];
-        let saved = await idb.get(sec.file);
-        if (!saved || saved.updated !== manifest.updated || force) {
-          say(`أنزّل قسم ${SECTIONS[s]?.[0] || s}…`, i / want.length);
-          const data = await fetchData(sec.file, force);
-          if (data) { saved = { updated: manifest.updated, data }; await idb.put(sec.file, saved); }
-        }
-        if (saved) shards.push(saved.data);
-        i++;
-      }
-      // Poem words (hashed): refreshed daily; the collector updates them weekly.
-      let lyr = await idb.get("lyrics.json");
-      if (!lyr || force || Date.now() - lyr.fetched > 864e5) {
-        say("أنزّل فهرس كلمات القصائد…", 1);
-        const data = await fetchData("lyrics.json", true);
-        if (data) { lyr = { fetched: Date.now(), data }; await idb.put("lyrics.json", lyr); }
-      }
-      worker.postMessage({ type: "load", shards, poems: poemsDoc.poems || [], lyrics: lyr?.data || null });
-      await ready;
+      const d = await gather(force ? "all" : false, say);
+      const again = info.loaded ? new Promise((r) => { reloaded = r; }) : null;
+      worker.postMessage({ type: "load", shards: d.shards, poems: d.poems, lyrics: d.lyrics });
+      await (again || ready);
       return info;
-    })().catch((e) => { worker.postMessage({ type: "load", shards: [], poems: [], lyrics: null }); throw e; }));
+    })().catch((e) => { if (!info.loaded) worker.postMessage({ type: "load", shards: [], poems: [], lyrics: [] }); throw e; }));
+  }
+
+  /* "Check for new now": fetch the newest published catalog and texts, download only what changed. */
+  async function checkNow(onProgress) {
+    await load(false).catch(() => {});
+    const before = { tracks: info.tracks, poems: info.poems };
+    const say = (t, p) => { try { onProgress && onProgress(t, p); } catch {} };
+    const d = await gather(false, say);
+    if (d.fetched) {
+      const again = new Promise((r) => { reloaded = r; });
+      worker.postMessage({ type: "load", shards: d.shards, poems: d.poems, lyrics: d.lyrics });
+      await again;
+    }
+    return { newTracks: Math.max(0, info.tracks - before.tracks), newPoems: Math.max(0, info.poems - before.poems), fetched: d.fetched,
+      updated: info.manifest?.updated, lyricsUpdated: info.lyricsIndex?.updated };
   }
 
   /* Seconds → "13:55" in Arabic digits' companion form (the apps convert digits themselves). */
   const clock = (s) => { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
     return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
 
-  root.QLib = { SECTIONS, store, fetchData, chosen, ask, load, info, ready: () => ready, clock };
+  root.QLib = { SECTIONS, store, fetchData, chosen, ask, load, checkNow, info, ready: () => ready, clock };
 })(window);

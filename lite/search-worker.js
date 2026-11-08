@@ -2,7 +2,7 @@
    Holds the ShiaVoice catalog (titles, reciters, albums — no lyrics) and the book index,
    and finds which poem a page photo or a typed fragment belongs to. Runs off the main thread. */
 "use strict";
-if (typeof importScripts === "function") importScripts("../match.js?v=13", "words.js?v=1");
+if (typeof importScripts === "function") importScripts("../match.js?v=13", "words.js?v=2");
 const M = typeof QMatch !== "undefined" ? QMatch : require("../match.js");
 const Wd = typeof QWords !== "undefined" ? QWords : require("./words.js");
 
@@ -68,8 +68,11 @@ function build(shards, poems) {
   return { entries: entries.length, tracks };
 }
 
-function buildLyrics(doc) {
-  lyr = (doc && doc.poems || []).map((p) => ({ title: p[0], reciter: p[1], poet: p[2], url: p[3], h: p[4] ? p[4].split(" ") : [] }));
+/* docs: the poem-words chunks (format 3: [key, title, reciter, poet, url, packed 4-char word codes]). */
+function buildLyrics(docs) {
+  lyr = [];
+  for (const d of [].concat(docs || [])) for (const p of (d && d.poems) || [])
+    lyr.push({ title: p[1], reciter: p[2], poet: p[3], url: p[4], h: Wd.unpack(p[5] || "") });
   const tmp = new Map();
   lyr.forEach((p, i) => { for (const h of p.h) { let a = tmp.get(h); if (!a) tmp.set(h, a = []); a.push(i); } });
   const N = lyr.length || 1;
@@ -84,7 +87,7 @@ function buildLyrics(doc) {
    Rare words count more than common ones (each word weighs log(1 + N/df)). */
 function searchLyrics(text, typed) {
   if (!lyr.length) return [];
-  const q = [...new Set(Wd.words(text).map(Wd.hash))];
+  const q = [...new Set(Wd.words(text).map(Wd.code))];
   if (!q.length) return [];
   const unknown = Math.log(1 + lyr.length);
   let qMass = 0;

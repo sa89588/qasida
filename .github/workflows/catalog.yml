@@ -1,5 +1,6 @@
 name: فهرس صوت الشيعة
-# يجمع فهرس صوت الشيعة للنسخة الخفيفة (بدون مفاتيح)، وينشره في الفرع data.
+# يجمع فهرس صوت الشيعة وكلمات القصائد للتطبيق، وينشرهما في الفرع data.
+# كل ٤ ساعات: الجديد فقط (صفحة «الجديد» في صوت الشيعة + آخر المنشورات في مصادر الكلمات)؛ ومرة في الأسبوع مرور كامل.
 on:
   push:
     branches: [main]
@@ -11,11 +12,11 @@ permissions:
   contents: write
 concurrency:
   group: catalog
-  cancel-in-progress: true   # a newer run takes over; nothing is lost, progress is published every 30 min
+  cancel-in-progress: false  # a run waits for the one before it (each publishes its progress)
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 230
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - name: Previous catalog
@@ -32,10 +33,10 @@ jobs:
       - name: Is a run due?
         id: due
         run: mkdir -p data && node tools/catalog/due.mjs data
-      - name: Poem texts (weekly)
+      - name: Poem texts (new posts; older Telegram posts until complete)
         id: lyrics
         env:
-          FORCE: ${{ github.event_name == 'push' && contains(join(github.event.commits.*.modified, ' '), 'tools/lyrics') && '1' || '' }}
+          LYRICS_MINUTES: "40"
         run: node tools/lyrics/collect.mjs data
       - name: Collect, publishing every 30 minutes
         if: steps.due.outputs.run == 'true'

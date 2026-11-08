@@ -36,8 +36,10 @@ async function loadCatalog(force) {
 function showCatalog() {
   const m = catalog.manifest;
   $("#catInfo").textContent = m
-    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة` + (catalog.poems ? ` و${ar(catalog.poems)} ${catalog.poems <= 10 ? "قصائد" : "قصيدة"} يُبحث في كلماتها` : "") + ` — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
+    ? `على هاتفك ${recCount(catalog.tracks)} من صوت الشيعة` + (catalog.poems ? ` و${catalog.poems === 1 ? "قصيدة واحدة" : catalog.poems === 2 ? "قصيدتان" : ar(catalog.poems) + (catalog.poems % 100 >= 3 && catalog.poems % 100 <= 10 ? " قصائد" : " قصيدة")} يُبحث في كلماتها` : "") + ` — آخر تحديث ${new Date(m.updated).toLocaleDateString("ar-IQ")}.`
     : "فهرس صوت الشيعة غير متاح بعد؛ يعمل فهرس الكتاب وحده.";
+  const li = QLib.info.lyricsIndex, when = (d) => d ? new Date(d).toLocaleString("ar-IQ", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  $("#updInfo").textContent = `آخر جمع للتسجيلات: ${when(m?.updated)} · للكلمات: ${when(li?.updated)}` + (li?.telegram && Object.values(li.telegram).includes("collecting") ? " · ما زالت قصائد قنوات تيليگرام القديمة تُجمع." : "");
   const list = $("#secList"); list.replaceChildren();
   const on = new Set(chosen(m));
   for (const [s, info] of Object.entries(m?.sections || {})) {
@@ -278,7 +280,24 @@ $("#setBtn").addEventListener("click", () => {
   const s = $("#settings"); s.hidden = !s.hidden; $("#setBtn").setAttribute("aria-expanded", String(!s.hidden));
   if (!s.hidden) s.scrollIntoView({ behavior: "smooth", block: "start" });
 });
-$("#updBtn").addEventListener("click", async () => { $("#updBtn").disabled = true; await loadCatalog(true).catch(() => {}); location.reload(); });
+/* Check for new recordings and poems now: the server collects every few hours; this pulls its latest at once. */
+async function checkNew(btn) {
+  btn.disabled = true;
+  status("أتحقق من الجديد…");
+  try {
+    const r = await QLib.checkNow((t, p) => work(t, p));
+    work(null); showCatalog();
+    const bits = [];
+    const cnt = (n, w) => n === 1 ? w[0] : n === 2 ? w[1] : ar(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? w[2] : w[3]);
+    if (r.newTracks) bits.push(cnt(r.newTracks, ["تسجيل جديد", "تسجيلان جديدان", "تسجيلات جديدة", "تسجيلاً جديداً"]));
+    if (r.newPoems) bits.push(cnt(r.newPoems, ["قصيدة جديدة", "قصيدتان جديدتان", "قصائد جديدة", "قصيدة جديدة"]) + " بكلماتها");
+    status(bits.length ? "أُضيف: " + bits.join(" و") + "." : "لا جديد منذ آخر تحديث. يجمع الخادم الجديد كل بضع ساعات.");
+  } catch { work(null); status("تعذّر التحقق الآن. تأكد من الاتصال.", true); }
+  btn.disabled = false;
+}
+$("#newBtn").addEventListener("click", () => checkNew($("#newBtn")));
+$("#updBtn").addEventListener("click", () => checkNew($("#updBtn")));
+$("#allBtn").addEventListener("click", async () => { $("#allBtn").disabled = true; await QLib.load(true, (t, p) => work(t, p)).catch(() => {}); work(null); location.reload(); });
 
 let dict = null;
 $("#micBtn").addEventListener("click", async () => {

@@ -308,7 +308,39 @@ const SMART_ERR = {
    Text → poem by its words, title → recordings, all on the phone and in a fraction of a second.
    Gemini is then only needed to READ a photo or a voice clip, and as a fallback when the library has no answer. */
 const L = window.QLib;
-if (L) L.load(false).catch(() => {});
+const nf = (n) => ar(Number(n).toLocaleString("en-US").replace(/,/g, "٬"));
+/* Arabic count agreement: 1, 2, 3–10, 11+ */
+const countAr = (n, [one, two, few, many]) => n === 1 ? one : n === 2 ? two : nf(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? few : many);
+const W_TRACKS = ["تسجيل واحد", "تسجيلان", "تسجيلات", "تسجيلاً"], W_POEMS = ["قصيدة واحدة", "قصيدتان", "قصائد", "قصيدة"];
+function libStatus(){
+  if (!L) return;
+  const i = L.info, li = i.lyricsIndex;
+  const when = (d) => d ? new Date(d).toLocaleString("ar-IQ", { dateStyle: "medium", timeStyle: "short" }) : "—";
+  const line = i.loaded ? `على هاتفك ${countAr(i.tracks, W_TRACKS)} و${countAr(i.poems, W_POEMS)} بكلماتها` : "أجهّز الفهرس على هاتفك…";
+  const a = $("#libLine"); if (a) a.textContent = line;
+  const b = $("#libInfo"); if (b) b.textContent = line + ` · آخر جمع للتسجيلات: ${when(i.manifest?.updated)} · للكلمات: ${when(li?.updated)}` +
+    (li?.telegram && Object.values(li.telegram).includes("collecting") ? " · ما زالت قصائد قنوات تيليگرام القديمة تُجمع." : "");
+}
+async function checkNew(btn, msg){
+  btn.disabled = true; const say = (t) => { if (msg) msg.textContent = t; else note(t); };
+  say("أتحقق من الجديد…");
+  try {
+    const r = await L.checkNow();
+    libStatus();
+    const bits = [];
+    if (r.newTracks) bits.push(countAr(r.newTracks, ["تسجيل جديد", "تسجيلان جديدان", "تسجيلات جديدة", "تسجيلاً جديداً"]));
+    if (r.newPoems) bits.push(countAr(r.newPoems, ["قصيدة جديدة", "قصيدتان جديدتان", "قصائد جديدة", "قصيدة جديدة"]) + " بكلماتها");
+    say(bits.length ? "أُضيف: " + bits.join(" و") + "." : "لا جديد منذ آخر تحديث. يجمع الخادم الجديد كل بضع ساعات.");
+  } catch { say("تعذّر التحقق الآن. تأكد من الاتصال."); }
+  btn.disabled = false;
+}
+if (L){
+  L.load(false).then(libStatus).catch(() => {});
+  libStatus();
+  $("#newBtn")?.addEventListener("click", () => checkNew($("#newBtn"), null));
+  $("#libCheck")?.addEventListener("click", () => checkNew($("#libCheck"), $("#libMsg")));
+  $("#libAll")?.addEventListener("click", async () => { const b = $("#libAll"); b.disabled = true; $("#libMsg").textContent = "أنزّل الفهرس كله…"; try { await L.load(true, (t) => { $("#libMsg").textContent = t; }); $("#libMsg").textContent = "تم."; libStatus(); } catch { $("#libMsg").textContent = "تعذّر التنزيل الآن."; } b.disabled = false; });
+}
 const libSv = (x) => ({ id: x.id, title: x.title, artist: x.artist, duration: L.clock(x.dur), score: 0.9 });
 async function libLookup(text, typed, waitMs){
   if (!L || !text || !String(text).trim()) return null;

@@ -115,3 +115,6 @@ html,body{overflow-x:hidden}
 main,.hero{grid-template-columns:minmax(0,1fr)}
 .search input{width:0}
 .warnline{padding:8px 12px;border-radius:10px;background:var(--surface2);border-inline-start:3px solid var(--warn);font-size:.92rem}
+.row.between{justify-content:space-between;flex-wrap:nowrap}
+.row.between .status{flex:1}
+#newBtn{flex:none}
