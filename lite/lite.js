@@ -197,7 +197,7 @@ function card(r, open) {
       p?.poet ? el("span", {}, "كلمات: " + p.poet) : r.lyric?.poet ? el("span", {}, "كلمات: " + r.lyric.poet) : null,
       !top && r.lyric?.reciter ? el("span", {}, "بصوت: " + r.lyric.reciter) : null,
       top?.artist ? el("span", {}, (p ? "بصوت: " : "") + [...new Set(r.recs.map((x) => x.artist))].slice(0, 3).join("، ")) : null,
-      el("span", { class: "muted" }, recCount(r.total + (p?.recordings?.filter((x) => x.type === "audio").length || 0)))));
+      el("span", { class: "muted" }, (() => { const n = r.total + (p?.recordings?.filter((x) => x.type === "audio").length || 0); return n ? recCount(n) : "لا تسجيل في الفهرس بعد"; })())));
   const body = el("div", { class: "rbody" });
   if (p?.books?.length) body.append(el("p", { class: "muted small" }, "في: " + p.books.map((b) => b.book + (b.page ? " — ص " + QMatch.toArabicDigits(b.page) : "")).join("؛ ")));
   const recList = el("ol", { class: "recs" });

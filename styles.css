@@ -289,3 +289,57 @@ code{font-size:.85em;background:var(--surface);padding:1px 5px;border-radius:5px
 .listcard .lname b{font-weight:600}
 .sheet-in input[type=text]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}
 #view-lists form.card input[type=text]{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink)}
+
+/* ---------- small screens: even, readable, easy to touch ---------- */
+.libbar{justify-content:space-between;gap:8px;margin-top:6px}
+.back{min-height:44px;padding:8px 2px}
+.speeds{flex-wrap:wrap;justify-content:flex-end}
+.speeds button{min-height:36px;min-width:44px;padding:6px 10px}
+details>summary{min-height:44px;padding-block:6px}
+details.howto{padding-block:2px}
+.toggle{min-height:44px;gap:10px;line-height:1.5;text-align:start}
+.toggle input[type=checkbox]{width:22px;height:22px;flex:none;margin:0;accent-color:var(--crimson)}
+.note-x{min-width:40px;min-height:40px;display:grid;place-items:center}
+.ap-seek input[type=range]{height:32px;min-width:0}
+.chip,.chip-btn{min-height:40px}
+.hero .acts{flex-wrap:wrap}
+.hero .acts button,.hero .acts a{min-height:38px}
+.icon-x{width:44px;height:44px}
+.rec .tx b,.ap-info b{overflow-wrap:anywhere}
+@media (max-width:480px){
+  main{padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right))}
+  .card{padding:14px;gap:10px}
+  /* buttons that wrap share the line evenly instead of hanging at different widths */
+  .card .row.gap>.btn,.card form.row>.btn,#view-lists .row.gap>.btn,.card .row.gap>label.toggle{flex:1 1 130px}
+  .card .row.gap>.chip.rep{flex:0 0 auto}
+  /* player actions: an even two-column grid; messages take the full width */
+  .mact{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mact>.chip,.mact>a.chip{justify-content:center;width:100%;text-align:center;padding-inline:8px}
+  .mact>:not(.chip){grid-column:1/-1}
+  /* recording rows: smaller thumbnail, more room for the title */
+  .rec{gap:10px;padding:8px}
+  .rec .th{width:54px;height:40px;border-radius:7px}
+  .rec .tag{font-size:.68rem;padding:1px 6px}
+  /* lists of choices: one per line, full width */
+  .cands{display:grid;grid-template-columns:1fr}
+  .cands .btn{width:100%;justify-content:flex-start;text-align:start}
+  /* sheets: full-width rows */
+  .sheet-in{padding:20px 16px calc(20px + env(safe-area-inset-bottom));align-items:stretch;text-align:start}
+  .sheet-in h2{text-align:center;font-size:1.5rem}
+  .sheet-in form.row{flex-direction:column;align-items:stretch}
+  .sheet-in form.row .btn,.sheet-in>.btn{width:100%}
+  .hero{padding:18px 16px 16px}
+  .ap-top{gap:10px 14px}
+}
+@media (max-width:420px){
+  .libbar{flex-direction:column;align-items:stretch}
+  .libbar .chip-btn{align-self:flex-start}
+}
+@media (max-width:360px){
+  .rec .tag:not(.maybe){display:none}           /* «مطابق» is implied; «محتمل» stays */
+  .rec{grid-template-columns:auto 1fr}
+  .hero h2{font-size:1.75rem}
+  .card{padding:12px}
+  .mact{grid-template-columns:1fr}
+  .speeds{justify-content:center}
+}

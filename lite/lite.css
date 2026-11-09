@@ -118,3 +118,33 @@ main,.hero{grid-template-columns:minmax(0,1fr)}
 .row.between{justify-content:space-between;flex-wrap:nowrap}
 .row.between .status{flex:1}
 #newBtn{flex:none}
+
+/* ---------- small screens ---------- */
+.go{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.go svg{display:none}
+.side .btn{flex:1 1 140px}
+.pact .muted{flex:1 1 100%;order:3}
+.big span{white-space:nowrap}
+.sec{min-height:44px}
+details>summary{min-height:44px}
+@media (max-width:420px){
+  main{padding:12px 10px calc(32px + env(safe-area-inset-bottom))}
+  .actions{grid-template-columns:1fr 1fr;gap:8px}
+  .big{min-height:58px;font-size:.98rem;gap:8px;padding:0 10px}
+  .card{padding:14px}
+  .rbody{padding:0 12px 14px}
+  .rhead{padding:12px 12px 8px}
+  .ptitle{font-size:1.2rem}
+  .row.side{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .row.side .btn{width:100%;padding-inline:8px}
+  .rbody>.btn.ghost.small{width:100%}
+  .search input{padding:10px 8px}
+}
+@media (max-width:380px){
+  .go .go-t{display:none}
+  .go svg{display:block}
+  .go{padding:10px 12px}
+  .search{gap:2px}
+  .search .icon{min-width:40px}
+  .row.side{grid-template-columns:1fr}
+}
