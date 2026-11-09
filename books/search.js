@@ -70,7 +70,10 @@
 
   /* Books whose title, author or topics hold every word asked for; titles first. */
   function search(q, filter) {
-    const parts = M.norm(q).split(/\s+/).filter((w) => w.length >= 2).map((w) => w.replace(/^(و?ال)(?=..)/, ""));
+    let parts = M.norm(q).split(/\s+/).filter((w) => w.length >= 2).map((w) => w.replace(/^(و?ال)(?=..)/, ""));
+    // «مجلة تراثنا», «كتاب الغيبة»: the libraries do not always write the word «مجلة» or «كتاب».
+    const core = parts.filter((w) => !/^(مجله|مجلات|كتاب|كتب|موسوعه|ديوان|رساله)$/.test(w));
+    if (core.length) parts = core;
     if (!parts.length) return [];
     const qk = M.compact(q);
     const out = [];
