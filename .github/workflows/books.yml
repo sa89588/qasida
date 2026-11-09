@@ -1,0 +1,41 @@
+name: مكتبة الكتب
+# يجمع فهرس كتب «مكتبة مدرسة الفقاهة» (النسخة العربية) وفهرس كلمات صفحات الكتب العربية، وينشرهما في الفرع books.
+# كل ٦ ساعات يكمل من حيث توقف: بطاقات الكتب أولاً، ثم صفحات الكتب بترتيب أهميتها في الحوزة.
+# لا يُحفظ نص أي صفحة: فقط رموز كلماتها وأرقام صفحاتها، والتطبيق يفتح الصفحة في مصدرها.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/books/**", "books/words.js", ".github/workflows/books.yml"]
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: books
+  cancel-in-progress: false
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+      - name: Previous books data
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: books
+          path: books-data
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Self-test
+        run: node tools/books/test.mjs
+      - name: Catalogue, cards and pages
+        env:
+          BOOKS_MINUTES: "300"
+          BOOKS_RATE: "1.5"
+          BOOKS_PUBLISH: bash tools/books/publish.sh books-data
+          PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: node tools/books/crawl.mjs books-data

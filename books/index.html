@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>مكتبة الكتب</title>
+<meta name="description" content="فهرس كتب الحوزة والكتب الشيعية العربية، مع البحث في عناوينها وفي كلمات صفحاتها.">
+<meta name="theme-color" content="#10202f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="مكتبة الكتب">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@500;700&display=swap">
+<link rel="stylesheet" href="books.css?v=1">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#">
+    <h1>مكتبة الكتب</h1>
+    <span class="tag">الحوزة والكتب الشيعية</span>
+  </a>
+  <button class="install" id="installBtn" type="button" hidden>ثبّت</button>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="heroT">
+    <h2 id="heroT" class="vh">ابحث في الكتب</h2>
+    <form class="search" id="form" role="search">
+      <label for="q" class="vh">ابحث عن كتاب أو مؤلف أو عن كلمات داخل الكتب</label>
+      <input id="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="اسم كتاب، مؤلف، أو كلمات من داخل الكتب…">
+      <button class="go" type="submit" aria-label="ابحث"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l4.6 4.6-1.4 1.4-4.6-4.6A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg><span class="go-t">ابحث</span></button>
+    </form>
+    <div class="scope" id="scope" hidden></div>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <div id="work" class="work" hidden role="status" aria-live="polite"><div class="spin" aria-hidden="true"></div><strong id="workT"></strong></div>
+
+  <section id="view" aria-live="polite"></section>
+
+  <footer class="foot">
+    <p class="muted small" id="stats"></p>
+    <p class="muted small">الكتب ونصوصها في <a href="https://ar.lib.eshia.ir/" target="_blank" rel="noopener">مكتبة مدرسة الفقاهة</a>، وكل نتيجة تفتح الصفحة هناك. التطبيق لا يحفظ نصوص الكتب: يحفظ فهرس عناوينها ورموزاً لكلمات صفحاتها للبحث فقط، ويُحدَّث كل بضع ساعات.</p>
+    <p class="muted small"><a href="../index.html">قارئ القصائد</a> · <a href="../lite/">قصائد خفيفة</a> · الإصدار ١</p>
+  </footer>
+</main>
+
+<script src="../match.js?v=13"></script>
+<script src="words.js?v=1"></script>
+<script src="search.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
