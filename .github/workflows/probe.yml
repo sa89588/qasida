@@ -1,4 +1,4 @@
-name: probe book libraries
+name: probe books crawler
 on:
   push:
     branches: [probe]
@@ -7,11 +7,20 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - run: bash tools/probe/probe.sh
-      - name: publish results to probe-out
-        run: |
-          cd out && git init -q -b probe-out && git config user.name probe && git config user.email actions@users.noreply.github.com
-          git add -A && git commit -qm probe && git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" probe-out
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tools/books/test.mjs
+      - name: short crawl
+        env:
+          BOOKS_MINUTES: "12"
+          BOOKS_RATE: "2"
+          BOOKS_CARD_SHARE: "0.35"
+          BOOKS_CHECKPOINT: "5"
+          BOOKS_BRANCH: books-test
+          BOOKS_PUBLISH: bash tools/books/publish.sh books-data
+          PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: node tools/books/crawl.mjs books-data
