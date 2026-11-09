@@ -19,7 +19,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
 <header class="appbar">
@@ -43,6 +43,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
     <div class="stage" id="stage">
       <video id="video" playsinline muted autoplay></video>
       <div class="corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <canvas class="pageline" id="pageLine" aria-hidden="true"></canvas>
       <div class="beam" aria-hidden="true"></div>
       <div class="idle" id="idle">
         <button type="button" class="start" id="camBtn" aria-label="افتح الكاميرا">
@@ -237,7 +238,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
-      <p class="muted small" id="verLine">الإصدار ١٩</p>
+      <p class="muted small" id="verLine">الإصدار ٢٠</p>
     </div>
   </section>
 </main>
@@ -284,14 +285,15 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 </div>
 
 <audio id="audio" preload="metadata"></audio>
-<script src="vendor/tesseract/tesseract.min.js?v=19"></script>
-<script src="match.js?v=19"></script>
-<script src="smart.js?v=19"></script>
-<script src="voice.js?v=19"></script>
-<script src="media.js?v=19"></script>
-<script src="sources.js?v=19"></script>
-<script src="lite/library.js?v=7"></script>
-<script src="keysync.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="vendor/tesseract/tesseract.min.js?v=20"></script>
+<script src="match.js?v=20"></script>
+<script src="smart.js?v=20"></script>
+<script src="voice.js?v=20"></script>
+<script src="media.js?v=20"></script>
+<script src="sources.js?v=20"></script>
+<script src="lite/library.js?v=8"></script>
+<script src="keysync.js?v=20"></script>
+<script src="scanner.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

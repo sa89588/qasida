@@ -202,11 +202,29 @@ async function startCamera(){
     try { if (caps.focusMode?.includes("continuous")) await state.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
     state.scanning = true; state.frames = 0; state.textyFrames = 0;
     camStatus("ثبّت الهاتف فوق الصفحة…");
-    scanLoop();
+    scanLoop(); outlineLoop();
   } catch (e){
     const denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
     note(denied ? "لم يُسمح باستخدام الكاميرا. امنح التطبيق إذن الكاميرا من إعدادات المتصفح أو الهاتف، أو استخدم «اختر صورة من المعرض»." : "تعذّر فتح الكاميرا على هذا الجهاز. استخدم «اختر صورة من المعرض».", true);
   }
+}
+/* While the camera is on: find the page's edges a few times a second and outline them
+   (gold while searching, green when steady), so the person sees what will be read. */
+async function outlineLoop(){
+  const v = $("#video"), ov = $("#pageLine");
+  let last = null, steady = 0;
+  while (state.scanning){
+    await sleep(350);
+    if (!state.scanning || document.hidden || !window.QScanner) continue;
+    let r = null; try { r = QScanner.detectPage(v); } catch {}
+    const q = r && r.quad;
+    if (q && last){ const move = Math.max(...q.map((p, i) => Math.hypot(p[0] - last[i][0], p[1] - last[i][1]))); steady = move < Math.max(v.videoWidth, v.videoHeight) * 0.025 ? steady + 1 : 0; }
+    else steady = 0;
+    last = q;
+    QScanner.drawQuad(ov, v, q, steady >= 2);
+    if (!state.busy && state.frames < 1) camStatus(q ? (steady >= 2 ? "وجدت الصفحة — أقرأها…" : "وجدت حدود الصفحة… ثبّت الهاتف") : "اجعل الصفحة كاملة داخل الإطار");
+  }
+  try { QScanner.drawQuad(ov, v, null); } catch {}
 }
 function stopCamera(){
   state.scanning = false;
@@ -222,7 +240,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function scanLoop(){
   while (state.scanning){
     if (state.busy || document.hidden){ await sleep(300); continue; }
-    const c = grabFrame(1600); if (!c){ await sleep(250); continue; }
+    const raw = grabFrame(1600); if (!raw){ await sleep(250); continue; }
+    const c = straighten(raw) || raw;
     state.busy = true; $("#stage").classList.add("reading");
     try {
       const text = await ocr(c, state.frames % 2 === 0);   // live frames: every other one gets the evened-light second look
@@ -250,7 +269,12 @@ async function scanLoop(){
   }
 }
 function buzz(){ try { navigator.vibrate && navigator.vibrate(60); } catch {} }
-async function snapNow(){ const c = grabFrame(1500); if (!c) return; stopCamera(); await recognize(c); }
+/* The page, straightened (edges found → perspective and tilt corrected), else the photo as it is. */
+function straighten(c){
+  try { const p = window.QScanner && QScanner.pageOf(c, 1600); if (p && p.canvas) return p.canvas; } catch {}
+  return null;
+}
+async function snapNow(){ const c = grabFrame(1800); if (!c) return; stopCamera(); const page = straighten(c); await recognize(page || c, page ? c : null); }
 async function pickImage(file){
   if (!file) return;
   stopCamera(); note(null);
@@ -260,7 +284,8 @@ async function pickImage(file){
     try { src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); w = src.naturalWidth; h = src.naturalHeight; }
     catch { note("تعذّر فتح هذه الصورة. جرّب صورة بصيغة JPG أو PNG.", true); return; }
   }
-  await recognize(scaleCanvas(src, w, h, 1500));
+  const c = scaleCanvas(src, w, h, 1800), page = straighten(c);
+  await recognize(page || c, page ? c : null);
 }
 
 async function smartFromFrame(canvas, raw){
@@ -271,14 +296,17 @@ async function smartFromFrame(canvas, raw){
 }
 
 /* ---------- recognition ---------- */
-async function recognize(colorCanvas){
+async function recognize(colorCanvas, original){
   state.ctl?.abort(); const ctl = new AbortController(); state.ctl = ctl;
   work("أتعرّف على القصيدة…", S.ready() ? "قراءة على الهاتف وقراءة ذكية معاً" : "على هاتفك");
   // Start the smart reading at once, in parallel with the on-device reading; whichever answers first wins.
   const smartP = S.ready() ? S.identify({ kind: "image", canvas: colorCanvas }, ctl.signal) : null;
   if (smartP) smartP.catch(() => {});
   let text = "";
-  try { text = await ocr(colorCanvas); } catch { /* reader unavailable: the smart reading can still answer */ }
+  try {
+    text = await ocr(colorCanvas);
+    if (original && arabicLetters(text) < 60){ const t2 = await ocr(original); if (arabicLetters(t2) > arabicLetters(text)) text = t2; }   // straightening misjudged: the whole photo
+  } catch { /* reader unavailable: the smart reading can still answer */ }
   if (ctl.signal.aborted) return;
   const m = M.findMatches(state.poems, text, false);
   if (m.best){ ctl.abort(); work(null); openPoem(m.best.p, { raw: text }); return; }

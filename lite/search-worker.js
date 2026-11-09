@@ -208,7 +208,7 @@ function searchPage(text) {
   const hay = M.compact(text);
   if (hay.length < 8) return [];
   const lines = String(text).split(/\n+/).map(M.compact).filter((l) => l.length >= 3);
-  const head = lines.slice(0, 4).join("");
+  const head = lines.slice(0, 4).join(""), top2 = lines.slice(0, 2).join("");
   const { hits, touched } = overlap(hay);
   const cand = [];
   for (const i of touched) {
@@ -223,7 +223,10 @@ function searchPage(text) {
     const e = entries[i];
     let s = M.fuzzyContains(hay, e.key);
     if (s < 0.72) continue;
-    if (head && M.fuzzyContains(head, e.key) >= 0.8) s += 0.06;  // titles sit at the top of the page
+    // Titles sit at the top of the page; a refrain lower down («يا حسين يا حسين») is not the poem's name.
+    if (top2 && M.fuzzyContains(top2, e.key) >= 0.75) s += 0.16;
+    else if (head && M.fuzzyContains(head, e.key) >= 0.8) s += 0.06;
+    else if (lines.length >= 4) s -= 0.1;
     s *= 0.85 + 0.15 * Math.min(1, e.key.length / 20);           // longer titles are more telling
     s *= e.weight;
     s += Math.min(0.04, e.recs.length * 0.004);                  // widely recorded poems are likelier

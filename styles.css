@@ -343,3 +343,7 @@ details.howto{padding-block:2px}
   .mact{grid-template-columns:1fr}
   .speeds{justify-content:center}
 }
+
+/* the detected page, outlined on the live camera view */
+.pageline{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none;display:none}
+.stage.on .pageline{display:block}

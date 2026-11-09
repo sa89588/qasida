@@ -113,11 +113,18 @@ async function readPhoto(file) {
   };
   try {
     const w = await getOcr((m) => progressHook && progressHook(m));
-    const page = scaled(img, 2200);
+    const photo = scaled(img, 2200);
+    // The page's edges found → perspective and tilt corrected; the straightened page is read first.
+    let page = photo;
+    try { const sp = window.QScanner && QScanner.pageOf(photo, 2000); if (sp && sp.canvas) { page = sp.canvas; $("#thumb").src = sp.canvas.toDataURL("image/jpeg", 0.6); } } catch {}
     let text = tidy((await w.recognize(page)).data.text);
     showRead(text);
     let found = arabicCount(text) >= 8 ? await search(text) : Object.assign([], { list: [] });
     const top = (f) => (f.list && f.list[0] ? f.list[0].score : 0);
+    if (page !== photo && top(found) < 0.85) {             // straightening misjudged: the photo as it is
+      const t0 = tidy((await w.recognize(photo)).data.text);
+      if (arabicCount(t0) >= 8) { const f0 = await search(t0); if (top(f0) > top(found)) { text = t0; found = f0; page = photo; showRead(text); } }
+    }
     if (top(found) < 0.85) {                               // shadows or a curved page: read once more, evened out
       work("أعيد القراءة بإضاءة مصحَّحة…", 0.5);
       const t2 = tidy((await w.recognize(flatten(page))).data.text);
