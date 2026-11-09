@@ -30,6 +30,8 @@ export function authorTokens(a) {
   return new Set(M.norm(a).split(/[\s،,]+/).map((w) => w.replace(/^ال(?=...)/, "")).filter((w) => w.length >= 3 && !HONOR.has(w) && !HONOR.has("ال" + w)));
 }
 
+// A Persian translation is not the Arabic book of the same name.
+const langClass = (l) => (!l || l.startsWith("ar") ? (l === "ar" ? "ar" : "") : "x");
 /* rows: { src, id, title, author, field, lang, vols?, died?, fullAuthor?, topics? } → entries */
 export function merge(rows) {
   const byTitle = new Map();
@@ -40,12 +42,14 @@ export function merge(rows) {
     const at = authorTokens((r.author || "") + " " + (r.fullAuthor || ""));
     let group = byTitle.get(k);
     if (!group) byTitle.set(k, group = []);
-    let e = group.find((g) => !at.size || !g.at.size || [...at].some((x) => g.at.has(x)));
-    if (!e) { e = { at: new Set(), rows: [] }; group.push(e); entries.push(e); }
+    const lg = langClass(r.lang);
+    let e = group.find((g) => (!lg || !g.lang || g.lang === lg) && (!at.size || !g.at.size || [...at].some((x) => g.at.has(x))));
+    if (!e) { e = { at: new Set(), rows: [], lang: "" }; group.push(e); entries.push(e); }
+    if (lg) e.lang = lg;
     for (const x of at) e.at.add(x);
     e.rows.push(r);
   }
-  const ORDER = { e: 0, f: 1, s: 2 };
+  const ORDER = { e: 0, a: 1, f: 2, s: 3, h: 4, i: 5, k: 6 };
   return entries.map((e) => {
     const rs = e.rows.sort((a, b) => ORDER[a.src] - ORDER[b.src]);
     const best = rs.filter((r) => r.lang === "ar").sort((a, b) => a.title.length - b.title.length)[0] || rs[0];   // the plainest title

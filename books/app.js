@@ -26,7 +26,10 @@
   const setPref = (k, v) => { const p = prefs(); p[k] = v; try { localStorage.setItem(LS, JSON.stringify(p)); } catch {} };
   const shown = (b) => prefs().allLangs || !b.lang || b.lang.startsWith("ar");
   const S = B.state;
-  const SRC = { e: { short: "مدرسة الفقاهة", act: "اقرأه", cls: "e" }, f: { short: "شبكة الفكر", act: "حمّل PDF", cls: "f" }, s: { short: "كتب شيعية", act: "حمّل PDF", cls: "s" } };
+  const SRC = { e: { short: "مدرسة الفقاهة", act: "اقرأه", cls: "e" }, a: { short: "مكتبة أهل البيت", act: "اقرأه", cls: "e" },
+    f: { short: "شبكة الفكر", act: "حمّل PDF", cls: "f" }, s: { short: "كتب شيعية", act: "حمّل PDF", cls: "s" },
+    h: { short: "الإمامين الحسنين", act: "اقرأه", cls: "f" }, i: { short: "العتبة الحسينية", act: "حمّل PDF", cls: "s" }, k: { short: "مكتبة الإمام الكاظم", act: "اقرأه", cls: "f" } };
+  const srcOf = (k) => SRC[k] || { short: k, act: "افتحه", cls: "" };
   const diedText = (b) => b.died ? "ت " + ar(b.died) + " هـ" : "";
 
   /* ---------- routing: #q=… · #b=KEY · #c=N ---------- */
@@ -75,7 +78,7 @@
     v.append(ul);
     if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#c=" + fi + "&n=" + (n + 120) }, "عرض المزيد (" + num(list.length - n) + ")"));
   }
-  function badges(b) { return el("span", { class: "srcs" }, b.sources.filter((s, i, a) => a.findIndex((x) => x.src === s.src) === i).map((s) => el("span", { class: "src " + SRC[s.src].cls, text: SRC[s.src].short }))); }
+  function badges(b) { return el("span", { class: "srcs" }, b.sources.filter((s, i, a) => a.findIndex((x) => x.src === s.src) === i).map((s) => el("span", { class: "src " + srcOf(s.src).cls, text: srcOf(s.src).short }))); }
   function bookRow(b) {
     return el("li", {}, el("a", { class: "brow", href: "#b=" + b.key },
       el("b", { text: b.title }),
@@ -95,7 +98,7 @@
     for (const s of b.sources.slice().sort((x, y) => (x.label || "").localeCompare(y.label || "", "ar", { numeric: true }))) {
       where.append(el("li", {}, el("span", { class: "wh" }, el("b", { text: S.sources[s.src] ? S.sources[s.src].name : s.src }), s.vols > 1 ? el("span", { class: "muted small", text: " · " + count(s.vols, W_VOL) }) : null,
           s.label ? el("span", { class: "lbl", text: s.label }) : null),
-        el("a", { class: "btn" + (s === b.sources[0] ? " primary" : ""), href: B.sourceUrl(s), target: "_blank", rel: "noopener" }, SRC[s.src].act + " ↗")));
+        el("a", { class: "btn" + (s === b.sources[0] ? " primary" : ""), href: B.sourceUrl(s), target: "_blank", rel: "noopener" }, srcOf(s.src).act + " ↗")));
     }
     const inside = eshia ? el("form", { class: "inside", onsubmit: (e) => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) window.open(B.textSearchUrl(q, eshia.id), "_blank", "noopener"); } },
       el("label", { class: "sec", for: "inq" }, "ابحث داخل هذا الكتاب"),
@@ -118,9 +121,11 @@
     const v = $("#view"); v.replaceChildren();
     const found = B.search(q, shown);
     v.append(el("section", { class: "card inside-all" },
-      el("h2", { class: "sec", text: "داخل نصوص الكتب" }),
-      el("a", { class: "btn primary", href: B.textSearchUrl(q), target: "_blank", rel: "noopener" }, "ابحث عن «" + q.slice(0, 40) + "» داخل نصوص الكتب ↗"),
-      el("p", { class: "muted small", text: "بمحرك مكتبة مدرسة الفقاهة: يبحث في نصوص آلاف الكتب صفحةً صفحة ويعرض المواضع." })));
+      el("h2", { class: "sec", text: "ابحث عن «" + q.slice(0, 40) + "» داخل نصوص الكتب" }),
+      el("ul", { class: "engines" }, B.TEXT_ENGINES.map((e, i) => el("li", {},
+        el("a", { class: "btn" + (i === 0 ? " primary" : ""), href: e.url(q), target: "_blank", rel: "noopener" }, e.name + " ↗"),
+        el("span", { class: "muted small", text: e.note })))),
+      el("p", { class: "muted small", text: "كل مكتبة تبحث بمحركها وتعرض النتائج عندها." })));
     if (!found.length) { status(""); v.append(el("p", { class: "card muted", text: "لا كتاب بهذا العنوان أو لهذا المؤلف في الفهرس." })); return; }
     status(count(found.length, W_BOOK) + " بهذا العنوان أو لهذا المؤلف أو في هذا الموضوع.");
     const ul = el("ul", { class: "books" });

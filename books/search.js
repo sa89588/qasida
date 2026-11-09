@@ -93,10 +93,20 @@
   const URLS = {
     e: (id) => "https://ar.lib.eshia.ir/" + id,
     f: (id) => "https://alfeker.net/b/" + id + "/",
-    s: (id) => "https://shiabooks.net/library.php?id=" + id
+    s: (id) => "https://shiabooks.net/library.php?id=" + id,
+    a: (id) => "https://ablibrary.net/book_content/b/" + id + "/1",
+    h: (id) => "https://www.alhassanain.org/arabic/?com=book&id=" + id,
+    i: (id) => "https://publication.imamhussain.org/post/" + id,
+    k: (id) => "https://www.imamkadhim.com/?post_type=book&p=" + id
   };
+  /* Search engines that look inside the books themselves (each opens its own results). */
+  const TEXT_ENGINES = [
+    { name: "مكتبة مدرسة الفقاهة", note: "نصوص آلاف كتب الحوزة، صفحةً صفحة", url: (q) => "https://ar.lib.eshia.ir/search/" + encodeURIComponent(q) },
+    { name: "مكتبة أهل البيت (ع)", note: "نصوص كتبها كاملة", url: (q) => "https://ablibrary.net/search?q=" + encodeURIComponent(q) },
+    { name: "مكتبة العتبة العباسية (الكفيل) الرقمية", note: "فهارس مصادرها الرقمية والرسائل الجامعية", url: (q) => "https://library.alkafeel.net/dic/search/?q=" + encodeURIComponent(q) }
+  ];
   const sourceUrl = (s) => URLS[s.src] ? URLS[s.src](s.id) : "#";
   const textSearchUrl = (q, eshiaId) => "https://ar.lib.eshia.ir/search/" + (eshiaId ? eshiaId + "/" : "") + encodeURIComponent(String(q).trim());
 
-  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, sourceUrl, textSearchUrl, get: (k) => S.byKey.get(k) };
+  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, sourceUrl, textSearchUrl, TEXT_ENGINES, get: (k) => S.byKey.get(k) };
 })(self);

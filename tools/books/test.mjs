@@ -2,7 +2,7 @@
 import fs from "node:fs"; import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
-import { splitShiabooksTitle, parseShiabooksField } from "./sources.mjs";
+import { splitShiabooksTitle, parseShiabooksField, parseAblibraryList, parseHassanainList, parseHusseiniList } from "./sources.mjs";
 import { merge, titleKey, fieldOf, FIELDS } from "./merge.mjs";
 const require = createRequire(import.meta.url); const W = require("../../books/words.js");
 const F = (n) => fs.readFileSync(new URL("./fixtures/" + n, import.meta.url), "utf8");
@@ -19,6 +19,9 @@ assert.deepEqual(splitShiabooksTitle("الكافي - (دار الكتب الإس
 assert.deepEqual(splitShiabooksTitle("رجال البرقي لــ أحمد بن عبدالله بن خالد البرقي - تحقيق حيدر محمد علي البغدادي"), { title: "رجال البرقي", author: "أحمد بن عبدالله بن خالد البرقي", vols: 0 });
 assert.equal(splitShiabooksTitle("ولاية الفقيه - الشيخ أحمد النراقي").author, "الشيخ أحمد النراقي");
 assert.deepEqual(parseShiabooksField('<h2><a href="library.php?id=15804">البرج في العمارة - بيرتون بيج</a></h2>'), [{ id: 15804, full: "البرج في العمارة - بيرتون بيج" }]);
+assert.deepEqual(parseAblibraryList('<a class="x" href="/book_content/b/10316/1"><h2 class="t">أجوبة السائلين</h2><p class="m">المؤلف: الشيخ فاضل اللنكراني<!-- --> · <!-- -->الناشر: قم<!-- --> · <!-- -->160<!-- --> <!-- -->صفحة</p></a>').map((r) => [r.id, r.title, r.author, r.pages]), [[10316, "أجوبة السائلين", "الشيخ فاضل اللنكراني", 160]]);
+assert.deepEqual(parseHassanainList('<div class="item book" itemscope><h2 class="contentheading" itemprop="title"><a href="?com=book&amp;id=653">الروضة من الكافي</a> - الجزء 8</h2><span class="creator" itemprop="author">الكليني</span><a href="?com=book&amp;view=category&amp;id=110"><b>متون حديثية</b></a>').map((r) => [r.id, r.title, r.label, r.author, r.field]), [[653, "الروضة من الكافي", "الروضة من الكافي - الجزء 8", "الكليني", "متون حديثية"]]);
+assert.equal(parseHusseiniList('<a href="https://publication.imamhussain.org/post/2943">\n<h5 class="text-center">أساليب السرد</h5></a><a href="x"><h6 class="t">مؤسسة وارث الأنبياء</h6></a>')[0].id, 2943);
 // merging
 assert.equal(titleKey("الكافي- ط الاسلامية"), titleKey("الكافي"));
 assert.equal(titleKey("وسائل الشيعة - ط آل البیت"), titleKey("وسائل الشيعة"));
@@ -35,4 +38,5 @@ const m = merge([
 const kafi = m.find((x) => x.sources.some((s) => s[1] === 11005));
 assert.deepEqual(kafi.sources.map((s) => s[0]).sort(), ["e", "s"], "same book from two libraries is one entry");
 assert.equal(m.filter((x) => x.title === "كتاب الطهارة").length, 2, "same title, different authors: two books");
+assert.equal(merge([{ src: "a", id: 1, title: "الغيبة (فارسى)", author: "الطوسي", lang: "fa" }, { src: "e", id: 2, title: "الغيبة", author: "الطوسي", lang: "ar" }]).length, 2, "a Persian translation stays apart");
 console.log("books self-test ok:", all.length, "eshia books in sample,", m.length, "merged entries");

@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
-import { alfeker, shiabooks } from "./sources.mjs";
+import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim } from "./sources.mjs";
 import { merge, FIELDS } from "./merge.mjs";
 
 const require = createRequire(import.meta.url);
@@ -91,6 +91,15 @@ async function eshiaCard(id) {
 }
 
 /* ---------- the catalogue for the app ---------- */
+const LIBRARIES = {
+  e: { name: "مكتبة مدرسة الفقاهة", url: "https://ar.lib.eshia.ir/" },
+  a: { name: "مكتبة أهل البيت (ع)", url: "https://ablibrary.net/" },
+  f: { name: "شبكة الفكر", url: "https://alfeker.net/" },
+  s: { name: "كتب شيعية", url: "https://shiabooks.net/" },
+  h: { name: "شبكة الإمامين الحسنين", url: "https://www.alhassanain.org/arabic/?com=book" },
+  i: { name: "إصدارات العتبة الحسينية", url: "https://publication.imamhussain.org/books" },
+  k: { name: "مكتبة الإمام الكاظم (ع)", url: "https://www.imamkadhim.com/" }
+};
 const ESHIA_FIELD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 10, 10, 11, 13, 12];   // eshia's fields → ours
 function eshiaRows() {
   return Object.entries(state.books).map(([id, b]) => ({ src: "e", id: +id, title: b.t, label: b.t, author: b.a === "---" ? "" : b.a, vols: b.v,
@@ -98,13 +107,12 @@ function eshiaRows() {
     died: (b.card && b.card.died) || 0, fullAuthor: (b.card && b.card.author) || "", topics: "" }));
 }
 function write() {
-  const rows = [...eshiaRows(), ...(state.sources.f || []), ...(state.sources.s || [])];
+  const rows = [...eshiaRows(), ...Object.values(state.sources).flat()];
   const entries = merge(rows);
   const books = entries.map((e) => [e.title, e.author, e.field, e.lang, e.died, e.fullAuthor, e.topics, e.sources]);
-  const counts = { e: 0, f: 0, s: 0 }; for (const r of rows) counts[r.src]++;
+  const counts = {}; for (const r of rows) counts[r.src] = (counts[r.src] || 0) + 1;
   fs.writeFileSync(P("catalog.json"), JSON.stringify({ format: 2, updated: new Date().toISOString(), fields: FIELDS,
-    sources: { e: { name: "مكتبة مدرسة الفقاهة", url: "https://ar.lib.eshia.ir/", count: counts.e }, f: { name: "شبكة الفكر", url: "https://alfeker.net/", count: counts.f },
-      s: { name: "كتب شيعية", url: "https://shiabooks.net/", count: counts.s } },
+    sources: Object.fromEntries(Object.entries(LIBRARIES).map(([k, v]) => [k, { ...v, count: counts[k] || 0 }])),
     columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes]]"], books }));
   // The page-text index of earlier versions is no longer used.
   fs.rmSync(P("seg"), { recursive: true, force: true }); fs.rmSync(P("index.json"), { force: true });
@@ -115,10 +123,12 @@ function write() {
 
 async function main() {
   await eshiaCatalogue();
-  const f = await alfeker(get, log).catch((e) => { log("alfeker failed", e.message); return null; });
-  if (f && f.length > 1000) state.sources.f = f;
-  const s = await shiabooks(get, log).catch((e) => { log("shiabooks failed", e.message); return null; });
-  if (s && s.length > 1000) state.sources.s = s;
+  // Each library's whole list, in parallel (each host is asked politely on its own); a failed read keeps the last list.
+  const LIBS = { f: [alfeker, 1000], s: [shiabooks, 1000], a: [ablibrary, 1000], h: [hassanain, 100], i: [husseini, 30], k: [kadhim, 20] };
+  await Promise.all(Object.entries(LIBS).map(async ([k, [fn, min]]) => {
+    const rows = await fn(get, log).catch((e) => { log(k, "failed", e.message); return null; });
+    if (rows && rows.length >= min) state.sources[k] = rows; else log(k, "kept the previous list", rows ? rows.length : 0);
+  }));
   write();
   // Cards of eshia's books, until the time is up (the most read fields first).
   const ids = Object.keys(state.books).filter((id) => !state.books[id].lang).sort((a, b) => (state.books[a].c ?? 99) - (state.books[b].c ?? 99) || a - b);
