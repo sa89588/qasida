@@ -18,7 +18,7 @@
     return n;
   }
   const count = (n, w) => n === 1 ? w[0] : n === 2 ? w[1] : num(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? w[2] : w[3]);
-  const W_BOOK = ["كتاب واحد", "كتابان", "كتب", "كتاباً"], W_VOL = ["جزء واحد", "جزءان", "أجزاء", "جزءاً"];
+  const W_BOOK = ["كتاب واحد", "كتابان", "كتب", "كتاباً"], W_VOL = ["جزء واحد", "جزءان", "أجزاء", "جزءاً"], W_FILE = ["ملف واحد", "ملفان", "ملفات", "ملفاً"];
   const status = (t, bad) => { const s = $("#status"); s.textContent = t || ""; s.classList.toggle("bad", !!bad); };
   const work = (t) => { $("#work").hidden = !t; $("#workT").textContent = t || ""; };
   const LS = "qasida.books.v1";
@@ -93,12 +93,25 @@
     if (!b) { v.append(el("p", { class: "card", text: "لم أجد هذا الكتاب في الفهرس." })); return; }
     const eshia = b.sources.find((s) => s.src === "e");
     const vols = Math.max(0, ...b.sources.map((s) => s.vols || 0));
+    // One row per library; a library holding the book in several files (volumes, editions) lists them inside.
     const where = el("ul", { class: "where" });
-    if (b.sources.length > 3) where.classList.add("many");
-    for (const s of b.sources.slice().sort((x, y) => (x.label || "").localeCompare(y.label || "", "ar", { numeric: true }))) {
-      where.append(el("li", {}, el("span", { class: "wh" }, el("b", { text: S.sources[s.src] ? S.sources[s.src].name : s.src }), s.vols > 1 ? el("span", { class: "muted small", text: " · " + count(s.vols, W_VOL) }) : null,
-          s.label ? el("span", { class: "lbl", text: s.label }) : null),
-        el("a", { class: "btn" + (s === b.sources[0] ? " primary" : ""), href: B.sourceUrl(s), target: "_blank", rel: "noopener" }, srcOf(s.src).act + " ↗")));
+    const groups = new Map();
+    for (const s of b.sources) { const g = groups.get(s.src); if (g) g.push(s); else groups.set(s.src, [s]); }
+    let first = true;
+    for (const [src, list] of groups) {
+      const name = S.sources[src] ? S.sources[src].name : src, act = srcOf(src).act;
+      list.sort((x, y) => (x.label || "").localeCompare(y.label || "", "ar", { numeric: true }) || x.id - y.id);
+      const vols = Math.max(0, ...list.map((s) => s.vols || 0));
+      const head = el("span", { class: "wh" }, el("b", { text: name }),
+        list.length > 1 ? el("span", { class: "muted small", text: count(list.length, W_FILE) }) : vols > 1 ? el("span", { class: "muted small", text: count(vols, W_VOL) }) : null,
+        list.length === 1 && list[0].label ? el("span", { class: "lbl", text: list[0].label }) : null);
+      const li = el("li", {}, head, el("a", { class: "btn" + (first ? " primary" : ""), href: B.sourceUrl(list[0]), target: "_blank", rel: "noopener" }, act + " ↗"));
+      first = false;
+      where.append(li);
+      if (list.length > 1) {
+        const items = el("ol", { class: "files" }, list.map((s, k) => el("li", {}, el("a", { href: B.sourceUrl(s), target: "_blank", rel: "noopener" }, s.label && s.label !== b.title ? s.label : "الملف " + ar(k + 1)))));
+        where.append(el("li", { class: "sub" }, el("details", {}, el("summary", {}, "كل ما في " + name + " (" + num(list.length) + ")"), items)));
+      }
     }
     const inside = eshia ? el("form", { class: "inside", onsubmit: (e) => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) window.open(B.textSearchUrl(q, eshia.id), "_blank", "noopener"); } },
       el("label", { class: "sec", for: "inq" }, "ابحث داخل هذا الكتاب"),

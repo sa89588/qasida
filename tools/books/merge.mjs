@@ -59,7 +59,7 @@ export function merge(rows) {
     return {
       title: best.title, author, field: fields.length ? fields[0] : 13, lang,
       died: Math.max(0, ...rs.map((r) => r.died || 0)), fullAuthor: (rs.find((r) => r.fullAuthor) || {}).fullAuthor || "",
-      topics: rs.map((r) => r.topics).filter(Boolean).join("، ").slice(0, 160),
+      topics: [...new Set(rs.flatMap((r) => String(r.topics || "").split(/\s*،\s*/)).filter(Boolean))].join("، ").slice(0, 160),
       // Each library's own title is kept when it says more (a volume, an edition, a journal issue).
       sources: rs.map((r) => (r.label && r.label !== best.title ? [r.src, r.id, r.vols || 0, r.label.slice(0, 140)] : [r.src, r.id, r.vols || 0]))
     };
