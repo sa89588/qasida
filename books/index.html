@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>مكتبة الكتب</title>
-<meta name="description" content="فهرس كتب الحوزة والكتب الشيعية العربية، مع البحث في عناوينها وفي كلمات صفحاتها.">
+<meta name="description" content="فهرس موحّد لكتب الحوزة والكتب الشيعية من عدة مكتبات، مع البحث في عناوينها ومؤلفيها وداخل نصوصها.">
 <meta name="theme-color" content="#10202f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@500;700&display=swap">
-<link rel="stylesheet" href="books.css?v=1">
+<link rel="stylesheet" href="books.css?v=2">
 </head>
 <body>
 <header class="bar">
@@ -29,11 +29,10 @@
   <section class="hero" aria-labelledby="heroT">
     <h2 id="heroT" class="vh">ابحث في الكتب</h2>
     <form class="search" id="form" role="search">
-      <label for="q" class="vh">ابحث عن كتاب أو مؤلف أو عن كلمات داخل الكتب</label>
-      <input id="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="اسم كتاب، مؤلف، أو كلمات من داخل الكتب…">
+      <label for="q" class="vh">ابحث عن كتاب أو مؤلف أو موضوع، أو عن كلمات داخل الكتب</label>
+      <input id="q" type="search" autocomplete="off" enterkeyhint="search" placeholder="اسم كتاب، مؤلف، موضوع، أو كلمات من داخل الكتب…">
       <button class="go" type="submit" aria-label="ابحث"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l4.6 4.6-1.4 1.4-4.6-4.6A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg><span class="go-t">ابحث</span></button>
     </form>
-    <div class="scope" id="scope" hidden></div>
     <p class="status" id="status" role="status" aria-live="polite"></p>
   </section>
 
@@ -43,14 +42,13 @@
 
   <footer class="foot">
     <p class="muted small" id="stats"></p>
-    <p class="muted small">الكتب ونصوصها في <a href="https://ar.lib.eshia.ir/" target="_blank" rel="noopener">مكتبة مدرسة الفقاهة</a>، وكل نتيجة تفتح الصفحة هناك. التطبيق لا يحفظ نصوص الكتب: يحفظ فهرس عناوينها ورموزاً لكلمات صفحاتها للبحث فقط، ويُحدَّث كل بضع ساعات.</p>
-    <p class="muted small"><a href="../index.html">قارئ القصائد</a> · <a href="../lite/">قصائد خفيفة</a> · الإصدار ١</p>
+    <p class="muted small">الفهرس يجمع قوائم <a href="https://ar.lib.eshia.ir/" target="_blank" rel="noopener">مكتبة مدرسة الفقاهة</a> و<a href="https://alfeker.net/" target="_blank" rel="noopener">شبكة الفكر</a> و<a href="https://shiabooks.net/" target="_blank" rel="noopener">كتب شيعية</a>، ويُحدَّث كل يوم. القراءة والتنزيل من صفحة الكتاب في كل مكتبة، والبحث داخل النصوص بمحرك مدرسة الفقاهة.</p>
+    <p class="muted small"><a href="../index.html">قارئ القصائد</a> · <a href="../lite/">قصائد خفيفة</a> · الإصدار ٢</p>
   </footer>
 </main>
 
 <script src="../match.js?v=13"></script>
-<script src="words.js?v=1"></script>
-<script src="search.js?v=1"></script>
-<script src="app.js?v=1"></script>
+<script src="search.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
