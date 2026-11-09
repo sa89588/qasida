@@ -1,12 +1,5 @@
-https://ablibrary.net/robots.txt
-https://ablibrary.net/sitemap.xml
-https://ablibrary.net/search?q=%D8%A7%D9%84%D9%83%D8%A7%D9%81%D9%8A
-https://www.alhassanain.org/arabic/?com=book&page=2
-https://www.alhassanain.org/arabic/?com=book&id=1139
-https://imamlib.com/ar/
-https://alhakeemlib.org/
-https://library.alkafeel.net/dic/
-https://publication.imamhussain.org/books
-https://turath.alkafeel.net/book/153
-https://imamkadhim.com/wp-json/wp/v2/book?per_page=2
-https://www.alhassanain.org/arabic/?com=book&view=category&id=111
+https://ablibrary.net/book_content/book-list
+https://ablibrary.net/book_content/sitemap-index.xml
+https://library.alkafeel.net/dic/search/?q=%D8%A7%D9%84%D9%83%D8%A7%D9%81%D9%8A
+https://publication.imamhussain.org/books?page=50
+https://www.alhassanain.org/arabic/?com=book&page=64
