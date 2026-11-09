@@ -23,4 +23,9 @@ jobs:
           BOOKS_BRANCH: books-test
           BOOKS_PUBLISH: bash tools/books/publish.sh books-data
           PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        run: node tools/books/crawl.mjs books-data
+        run: node tools/books/crawl.mjs books-data 2>&1 | tee crawl.log
+      - name: log
+        if: always()
+        run: |
+          mkdir -p out && cp crawl.log out/ && cd out && git init -q -b probe-out && git config user.name probe && git config user.email actions@users.noreply.github.com
+          git add -A && git commit -qm log && git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" probe-out
