@@ -1,0 +1,17 @@
+name: probe book libraries
+on:
+  push:
+    branches: [probe]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/probe/probe.sh
+      - name: publish results to probe-out
+        run: |
+          cd out && git init -q -b probe-out && git config user.name probe && git config user.email actions@users.noreply.github.com
+          git add -A && git commit -qm probe && git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" probe-out
