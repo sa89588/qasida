@@ -102,6 +102,6 @@ main>*{min-width:0}
 .engines .btn{justify-self:start;max-width:100%;white-space:normal;text-align:start;padding:8px 16px}
 .where li.sub{display:block;padding:0 10px 6px;min-height:0;background:none;border:0}
 .where li.sub summary{cursor:pointer;min-height:40px;display:flex;align-items:center;color:var(--accent);font-size:.9rem}
-.files{margin:0;padding-inline-start:22px;display:grid;gap:4px;max-height:50vh;overflow:auto;font-size:.9rem}
+.files{margin:0;list-style:none;padding-inline-start:6px;display:grid;gap:4px;max-height:50vh;overflow:auto;font-size:.9rem}
 .files a{display:inline-block;min-height:32px;padding:4px 0}
 .where .files li{display:list-item;padding:0;min-height:0;background:none;border:0;border-radius:0}
