@@ -2,9 +2,9 @@
    - App code: network first, cached copy only when offline (an update is never mixed with old files).
    - Reader files (../vendor) and icons: cache first, stored the first time they are used.
    - The catalog lives in IndexedDB (lite.js); audio streams from its source and is not cached. */
-const VERSION = "qasida-lite-v12";
-const SHELL = ["./", "index.html", "lite.css?v=6", "library.js?v=7", "lite.js?v=9", "search-worker.js?v=8", "words.js?v=2", "manifest.webmanifest",
-  "../match.js?v=13", "../voice.js?v=13", "../poems.json?v=13", "../vendor/tesseract/tesseract.min.js", "../icons/icon-192.png"];
+const VERSION = "qasida-lite-v13";
+const SHELL = ["./", "index.html", "lite.css?v=7", "library.js?v=7", "lite.js?v=10", "search-worker.js?v=8", "words.js?v=2", "manifest.webmanifest",
+  "../match.js?v=13", "../voice.js?v=13", "../poems.json?v=13", "../vendor/tesseract/tesseract.min.js", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil((async () => {
@@ -20,7 +20,7 @@ self.addEventListener("activate", (e) => {
   })());
 });
 
-const isStatic = (p) => /\/qasida\/(vendor|icons)\//.test(p);
+const isStatic = (p) => /\/qasida\/(lite\/)?(vendor|icons)\//.test(p);
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET" || req.headers.has("range")) return;

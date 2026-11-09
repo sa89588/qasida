@@ -353,6 +353,26 @@ function listen() {
   btn.classList.add("live"); clearResults(); listening = { stop: finish };
 }
 
+/* Installing: the browser's own prompt where it offers one (Android, desktop); instructions otherwise. */
+const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+let deferredInstall = null;
+function paintInstall() {
+  const can = !!deferredInstall && !standalone();
+  $("#installBtn").hidden = !can; $("#installBtn2").hidden = !can;
+  if (standalone()) { $("#installState").textContent = "التطبيق مثبّت ويعمل الآن كتطبيق مستقل ✓"; $(".howlist").hidden = true; }
+}
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; paintInstall(); });
+window.addEventListener("appinstalled", () => { deferredInstall = null; paintInstall(); status("ثُبّت التطبيق. ستجده على الشاشة الرئيسية باسم «قصائد خفيفة»."); });
+async function install() {
+  if (!deferredInstall) { $("#settings").hidden = false; $("#installBox").scrollIntoView({ behavior: "smooth" }); return; }
+  deferredInstall.prompt();
+  try { await deferredInstall.userChoice; } catch {}
+  deferredInstall = null; paintInstall();
+}
+$("#installBtn").addEventListener("click", install);
+$("#installBtn2").addEventListener("click", install);
+paintInstall();
+
 if ("serviceWorker" in navigator) {
   const had = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register("sw.js?v=1", { scope: "./" }).catch(() => {});

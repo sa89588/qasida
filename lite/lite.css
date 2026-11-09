@@ -148,3 +148,19 @@ details>summary{min-height:44px}
   .search .icon{min-width:40px}
   .row.side{grid-template-columns:1fr}
 }
+
+/* install */
+.install{border:1px solid rgba(243,212,143,.55);background:transparent;color:#f3d48f;font:inherit;font-size:.85rem;font-weight:600;border-radius:999px;padding:6px 12px;min-height:40px;cursor:pointer;margin-inline-start:auto}
+.installbox{display:grid;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.howlist{margin:0;padding-inline-start:18px;display:grid;gap:4px}
+.brand h1,.tag,.install{white-space:nowrap}
+.settings .row .btn{flex:1 1 140px}
+@media (max-width:420px){
+  .bar{gap:8px;padding-inline:12px}
+  .brand h1{font-size:1.35rem}
+  .install{padding:4px 10px;font-size:.8rem}
+}
+@media (max-width:380px){
+  .install:not([hidden])~.icon{min-width:40px}
+  .bar:has(.install:not([hidden])) .tag{display:none}   /* room for the install button */
+}
