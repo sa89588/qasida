@@ -52,7 +52,7 @@ export function pageText(html) {
 /* A volume's card («شهادة الكتاب», page 0): full title, full author with year of death, subject, publisher. */
 export function parseCard(html) {
   const t = pageText(html);
-  const f = (k) => { const m = t.match(new RegExp(k + "\\s*:\\s*([^\\n]*)")); return m ? m[1].trim() : ""; };
+  const f = (k) => { const m = t.match(new RegExp(k + "[ \\t]*:[ \\t]*([^\\n]*)")); return m ? m[1].trim() : ""; };
   const author = f("نام کامل پدیدآورنده");
   const d = author.match(/\(\s*م\s*([\d٠-٩۰-۹]+)\s*(ق|ش|م)?/);
   const digits = (s) => +String(s).replace(/[٠-٩]/g, (x) => "٠١٢٣٤٥٦٧٨٩".indexOf(x)).replace(/[۰-۹]/g, (x) => "۰۱۲۳۴۵۶۷۸۹".indexOf(x));
@@ -64,3 +64,21 @@ export function parseCard(html) {
 
 /* Books in a category page («/الفقه/all»): their ids. */
 export const parseCategory = (html) => parseAll(html).map((b) => b.id);
+/* Links from a category page to its sub-categories («/الفقه/رسائل_عملیه»). */
+export function subCategories(html, cat) {
+  const out = new Set();
+  for (const m of html.matchAll(/href="(?:https?:\/\/ar\.lib\.eshia\.ir)?\/([^"\/#?]+)\/([^"\/#?]+)"/g)) {
+    let a, b; try { a = decodeURIComponent(m[1]); b = decodeURIComponent(m[2]); } catch { continue; }
+    if (a === cat && b !== "all" && b !== "authors" && !/^\d+$/.test(b)) out.add(b);
+  }
+  return [...out];
+}
+/* A card's subject → one of the fields, when the field pages did not list the book. */
+const SUBJECTS = [[/اصول|أصول/, 1], [/فقه|احكام|أحكام|رسائل عمليه|رساله عمليه/, 0], [/تفسير|قرآن|قران|علوم القرآن/, 2], [/حديث|حدیث|كتب اربعه|الكتب الاربعة|الکتب الاربعة|روايات|رجال|درايه/, 3],
+  [/كلام|عقائد|عقايد|امامت|إمامة/, 4], [/اخلاق|أخلاق|دعا|ادعيه|زيارات/, 5], [/سيره|سیره|مقتل|زندگينامه|تراجم/, 6], [/تاريخ|تاریخ|جغرافيا/, 7],
+  [/فلسفه|منطق|عرفان|حكمت/, 8], [/(^|\s)فرق|مذاهب|اديان/, 9], [/ادبيات|نحو|صرف|بلاغت|بلاغه|شعر|لغت|ادب/, 10], [/فرهنگ|معجم|لغه/, 11], [/سياس|سیاس/, 12]];
+export function fieldOfSubject(subject) {
+  const s = String(subject || "").replace(/[\u200c]/g, " ").replace(/ی/g, "ي").replace(/ک/g, "ك");
+  for (const [re, c] of SUBJECTS) if (re.test(s)) return c;
+  return null;
+}
