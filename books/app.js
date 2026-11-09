@@ -67,7 +67,7 @@
     paintStats();
   }
   function paintStats() {
-    const ar_ = S.books.filter((b) => b.lang && b.lang.startsWith("ar")).length;
+    const known = S.books.filter((b) => b.lang).length, ar_ = known > S.books.length * 0.95 ? S.books.filter((b) => b.lang && b.lang.startsWith("ar")).length : 0;
     const indexed = new Set(S.vols.map((x) => x[0])).size;
     $("#stats").textContent = S.books.length ? "في الفهرس " + count(S.books.length, W_BOOK) + (ar_ ? " (منها " + num(ar_) + " بالعربية)" : "") +
       " · البحث في النصوص يشمل الآن " + count(indexed, W_BOOK) + " (" + count((S.index && S.index.docs) || 0, W_PAGE) + ")" + "، ويزداد كل يوم" +

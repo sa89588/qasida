@@ -55,7 +55,9 @@ async function get(url) {
 
 /* ---------- the catalogue ---------- */
 async function catalogue() {
-  if (Object.keys(state.books).length && Date.now() - state.catalogAt < 7 * 864e5) return;
+  const CAT_VERSION = 2;            // raised when the way fields are read changes: read them again
+  if (Object.keys(state.books).length && Date.now() - state.catalogAt < 7 * 864e5 && state.catVersion === CAT_VERSION) return;
+  state.catVersion = CAT_VERSION;
   const html = await get(E.BASE + "/all");
   const all = html ? E.parseAll(html) : [];
   if (all.length < 1000) { log("catalogue: list not read", all.length); return; }
