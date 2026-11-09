@@ -1,7 +1,7 @@
 /* مكتبة الكتب offline: the app's own files network-first (cached copy when offline). The catalogue lives
    in IndexedDB (search.js). */
-const VERSION = "qasida-books-v2";
-const SHELL = ["./", "index.html", "books.css?v=2", "search.js?v=2", "app.js?v=2", "../match.js?v=13", "manifest.webmanifest",
+const VERSION = "qasida-books-v3";
+const SHELL = ["./", "index.html", "books.css?v=3", "search.js?v=3", "app.js?v=3", "../match.js?v=13", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

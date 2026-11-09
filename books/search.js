@@ -40,7 +40,7 @@
     S.catalog = c; S.fields = c.fields || []; S.sources = c.sources || {};
     S.books = c.books.map((r, i) => {
       const b = { i, title: r[0], author: r[1], field: r[2], lang: r[3], died: r[4], fullAuthor: r[5], topics: r[6],
-        sources: r[7].map((s) => ({ src: s[0], id: s[1], vols: s[2] })) };
+        sources: r[7].map((s) => ({ src: s[0], id: s[1], vols: s[2], label: s[3] || "" })) };
       b.key = skey(r[7][0]);
       b.tkey = M.compact(b.title); b.akey = M.compact(b.author + " " + b.fullAuthor); b.pkey = M.compact(b.topics);
       return b;

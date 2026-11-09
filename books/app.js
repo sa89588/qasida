@@ -91,8 +91,10 @@
     const eshia = b.sources.find((s) => s.src === "e");
     const vols = Math.max(0, ...b.sources.map((s) => s.vols || 0));
     const where = el("ul", { class: "where" });
-    for (const s of b.sources) {
-      where.append(el("li", {}, el("span", {}, el("b", { text: S.sources[s.src] ? S.sources[s.src].name : s.src }), s.vols > 1 ? el("span", { class: "muted small", text: " · " + count(s.vols, W_VOL) }) : null),
+    if (b.sources.length > 3) where.classList.add("many");
+    for (const s of b.sources.slice().sort((x, y) => (x.label || "").localeCompare(y.label || "", "ar", { numeric: true }))) {
+      where.append(el("li", {}, el("span", { class: "wh" }, el("b", { text: S.sources[s.src] ? S.sources[s.src].name : s.src }), s.vols > 1 ? el("span", { class: "muted small", text: " · " + count(s.vols, W_VOL) }) : null,
+          s.label ? el("span", { class: "lbl", text: s.label }) : null),
         el("a", { class: "btn" + (s === b.sources[0] ? " primary" : ""), href: B.sourceUrl(s), target: "_blank", rel: "noopener" }, SRC[s.src].act + " ↗")));
     }
     const inside = eshia ? el("form", { class: "inside", onsubmit: (e) => { e.preventDefault(); const q = e.target.q.value.trim(); if (q) window.open(B.textSearchUrl(q, eshia.id), "_blank", "noopener"); } },

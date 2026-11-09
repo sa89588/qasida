@@ -93,7 +93,7 @@ async function eshiaCard(id) {
 /* ---------- the catalogue for the app ---------- */
 const ESHIA_FIELD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 10, 10, 11, 13, 12];   // eshia's fields → ours
 function eshiaRows() {
-  return Object.entries(state.books).map(([id, b]) => ({ src: "e", id: +id, title: b.t, author: b.a === "---" ? "" : b.a, vols: b.v,
+  return Object.entries(state.books).map(([id, b]) => ({ src: "e", id: +id, title: b.t, label: b.t, author: b.a === "---" ? "" : b.a, vols: b.v,
     field: b.c != null && b.c >= 0 ? FIELDS[ESHIA_FIELD[b.c]] : (b.card && b.card.subject) || "", lang: b.lang || "",
     died: (b.card && b.card.died) || 0, fullAuthor: (b.card && b.card.author) || "", topics: "" }));
 }

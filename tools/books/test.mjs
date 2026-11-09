@@ -22,6 +22,9 @@ assert.deepEqual(parseShiabooksField('<h2><a href="library.php?id=15804">الب�
 // merging
 assert.equal(titleKey("الكافي- ط الاسلامية"), titleKey("الكافي"));
 assert.equal(titleKey("وسائل الشيعة - ط آل البیت"), titleKey("وسائل الشيعة"));
+assert.equal(titleKey("الكافي ، 15 جزء – طبعة دار الحديث"), titleKey("الكافي"));
+assert.equal(titleKey("الكافي في أصول الفقه – ج1ج2"), titleKey("الكافي في أصول الفقه"));
+assert.notEqual(titleKey("آفاق الحضارة (العدد 9)").length, 0);
 assert.equal(fieldOf("رجال الحديث"), 9); assert.equal(fieldOf("الفقه والأصول / الأصول"), 1); assert.equal(fieldOf("القرآن وعلومه"), 2);
 for (let i = 0; i < FIELDS.length; i++) assert.equal(fieldOf(FIELDS[i]), i, "own field " + FIELDS[i]);
 const m = merge([

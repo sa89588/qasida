@@ -32,7 +32,8 @@ export async function alfeker(get, log) {
       const parent = c && c.parent ? cats.get(c.parent) : null;
       const field = [parent && parent.name, c && c.name].filter(Boolean).join(" / ");
       const lang = /فارسي|Persian/.test(field) ? "fa" : /English|انجليزي|بنغالي|Bengali|اندونيسي|Indonesian|الفرنسي|French|Other/.test(field) ? "en" : "ar";
-      out.push({ src: "f", id, title: plain(b.title && b.title.rendered), author: (b.book_author || []).map((a) => authors.get(a)?.name).filter(Boolean).join("، "),
+      const title = plain(b.title && b.title.rendered);
+      out.push({ src: "f", id, title, label: title, author: (b.book_author || []).map((a) => authors.get(a)?.name).filter(Boolean).join("، "),
         field, lang, topics: (b.book_topic || []).map((t) => topics.get(t)?.name).filter(Boolean).slice(0, 6).join("، ") });
     }
     if (list.length < 100) break;
@@ -76,7 +77,8 @@ export async function shiabooks(get, log) {
       for (const r of rows) {
         seen.add(r.id);
         const t = splitShiabooksTitle(r.full);
-        out.push({ src: "s", id: r.id, title: t.title, author: t.author, vols: t.vols, field: name,
+        if (/مجل/.test(name)) t.author = "";               // a journal: what follows its name is the issue, not an author
+        out.push({ src: "s", id: r.id, title: t.title, author: t.author, vols: t.vols, field: name, label: r.full,
           lang: /English/i.test(name) ? "en" : /[پچژگ]/.test(r.full) ? "fa" : "ar", topics: "" });
       }
       if (!/[?&]page=\d+/.test(h)) break;          // one page lists the whole field
