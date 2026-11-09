@@ -1,7 +1,4 @@
-https://alfeker.net/wp-json/wp/v2/types
-https://alfeker.net/wp-sitemap.xml
-https://alfeker.net/wp-json/
-https://shiabooks.net/library.php?page=2
-https://shiabooks.net/library.php?catid=21
-https://alfeker.net/b/6902/
-https://alfeker.net/authors/
+https://alfeker.net/wp-json/wp/v2/book?per_page=3
+https://alfeker.net/wp-json/wp/v2/book_cat?per_page=100
+https://alfeker.net/wp-json/wp/v2/book_author?per_page=3
+https://alfeker.net/wp-json/wp/v2/book?per_page=100&page=2&_fields=id,title,link,book_cat,book_author,book_topic,meta
