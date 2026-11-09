@@ -224,7 +224,7 @@ ${list ? "وهذه نتائج بحث حقيقية في يوتيوب عن هذا 
       items = items.map((v) => {
         const x = byId.get(v.id); if (!x) return v;
         return { ...v, dur: isoSeconds(x.contentDetails && x.contentDetails.duration), live: ["live", "upcoming"].includes(x.snippet && x.snippet.liveBroadcastContent),
-          desc: decodeEntities((x.snippet && x.snippet.description) || v.desc).slice(0, 1500), tags: ((x.snippet && x.snippet.tags) || []).slice(0, 25).join(" ") };
+          published: (x.snippet && x.snippet.publishedAt) || "", desc: decodeEntities((x.snippet && x.snippet.description) || v.desc).slice(0, 1500), tags: ((x.snippet && x.snippet.tags) || []).slice(0, 25).join(" ") };
       });
     } catch (e) { if (e.code === "cancelled") throw e; }
     items = items.map((v) => ({ ...v, verdict: judge(v) }));

@@ -164,3 +164,13 @@ details>summary{min-height:44px}
   .install:not([hidden])~.icon{min-width:40px}
   .bar:has(.install:not([hidden])) .tag{display:none}   /* room for the install button */
 }
+
+/* the shared player inside a result, and «قوائمي» */
+.qpslot:not(:empty){margin-top:10px}
+.lists{display:grid;gap:10px}
+.lists>*{min-width:0}
+.lists h2{font-size:1.15rem}
+.lname{font-size:1rem}
+.lall,.ledit{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.lall li,.ledit li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);min-height:52px}
+.ledit li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -2,9 +2,9 @@
    - App code: network first, cached copy only when offline (an update is never mixed with old files).
    - Reader files (../vendor) and icons: cache first, stored the first time they are used.
    - The catalog lives in IndexedDB (lite.js); audio streams from its source and is not cached. */
-const VERSION = "qasida-lite-v14";
-const SHELL = ["./", "index.html", "lite.css?v=7", "library.js?v=8", "lite.js?v=11", "search-worker.js?v=9", "words.js?v=2", "manifest.webmanifest",
-  "../match.js?v=13", "../scanner.js?v=20", "../voice.js?v=13", "../poems.json?v=13", "../vendor/tesseract/tesseract.min.js", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
+const VERSION = "qasida-lite-v15";
+const SHELL = ["./", "index.html", "lite.css?v=8", "library.js?v=8", "lite.js?v=12", "search-worker.js?v=9", "words.js?v=2", "manifest.webmanifest",
+  "../match.js?v=13", "../scanner.js?v=20", "../player.js?v=21", "../player.css?v=21", "../voice.js?v=13", "../poems.json?v=13", "../vendor/tesseract/tesseract.min.js", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil((async () => {

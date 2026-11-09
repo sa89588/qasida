@@ -167,7 +167,7 @@ async function runSearch(text, typed) {
   } catch { work(null); status("حدث خطأ أثناء البحث.", true); }
 }
 
-function clearResults() { $("#results").replaceChildren(); status(""); }
+function clearResults() { QPlayer.stop(); $("#results").replaceChildren(); status(""); }
 const fmt = (s) => { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
   return QMatch.toArabicDigits((h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0")); };
 const yt = (q) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
@@ -207,16 +207,22 @@ function card(r, open) {
       el("span", { class: "muted" }, (() => { const n = r.total + (p?.recordings?.filter((x) => x.type === "audio").length || 0); return n ? recCount(n) : "لا تسجيل في الفهرس بعد"; })())));
   const body = el("div", { class: "rbody" });
   if (p?.books?.length) body.append(el("p", { class: "muted small" }, "في: " + p.books.map((b) => b.book + (b.page ? " — ص " + QMatch.toArabicDigits(b.page) : "")).join("؛ ")));
+  // Every recording of this poem is one queue for the shared player (player.js): tap any to start there.
+  const cardTitle = p ? p.title : r.title, poet = p?.poet || r.lyric?.poet || "";
+  const queue = [
+    ...(p?.recordings || []).filter((x) => x.type === "audio" && x.src).map((a) => ({ rec: { type: "audio", src: a.src, reciter: a.reciter || "", source: a.source || "شبكة رافد" }, title: p.title, poem: { id: p.id, title: p.title, poet: p.poet || "" } })),
+    ...r.recs.map((x) => ({ rec: { type: "shiavoice", id: x.id, reciter: x.artist, note: x.title, dur: x.dur, album: x.album || "", section: x.section || "" }, title: x.title, poem: { title: cardTitle, poet } }))];
+  const slot = el("div", { class: "qpslot" });
   const recList = el("ol", { class: "recs" });
-  for (const a of (p?.recordings || []).filter((x) => x.type === "audio")) recList.append(bookAudio(a, p));
-  const shown = r.recs.slice(0, 6);
-  for (const x of shown) recList.append(svRow(x));
-  body.append(recList);
-  if (!r.recs.length && !(p?.recordings || []).length)
+  const start = (k) => { recList.remove(); more && more.remove(); QPlayer.mount(slot, { queue, index: k, autoplay: true, queueTitle: "التسجيلات" }); };
+  queue.slice(0, 6).forEach((it, k) => recList.append(recRow(it, () => start(k))));
+  body.append(slot, recList);
+  if (!queue.length)
     body.append(el("p", { class: "muted small" }, "لم أجد تسجيلاً بهذا العنوان في فهرس صوت الشيعة — جرّب «المزيد في صوت الشيعة» أو يوتيوب."));
-  if (r.recs.length > shown.length) {
-    const more = el("button", { class: "btn ghost small", type: "button", onclick: () => { for (const x of r.recs.slice(shown.length)) recList.append(svRow(x)); more.remove(); } },
-      `عرض كل التسجيلات (${ar(r.recs.length)})`);
+  let more = null;
+  if (queue.length > 6) {
+    more = el("button", { class: "btn ghost small", type: "button", onclick: () => { queue.slice(6).forEach((it, k) => recList.append(recRow(it, () => start(k + 6)))); more.remove(); more = null; } },
+      `عرض كل التسجيلات (${ar(queue.length)})`);
     body.append(more);
   }
   const q = (p ? p.title : r.title) + (top?.artist ? " " + top.artist : r.lyric?.reciter ? " " + r.lyric.reciter : "");
@@ -229,48 +235,14 @@ function card(r, open) {
   return d;
 }
 
-function bookAudio(a, p) {
-  const li = el("li", { class: "rec" });
-  const main = el("div", { class: "recmain" },
-    el("button", { class: "play", type: "button", "aria-label": "تشغيل " + p.title + (a.reciter ? " — " + a.reciter : ""), onclick: () => {
-      stopAll();
-      const au = el("audio", { controls: true, preload: "none", src: a.src });
-      li.append(el("div", { class: "player" }, au,
-        el("div", { class: "row pact" },
-          el("a", { class: "btn small", href: a.src, download: "", target: "_blank", rel: "noopener" }, dlIcon(), "تنزيل"),
-          el("button", { class: "btn ghost small", type: "button", onclick: stopAll }, "إيقاف"))));
-      au.play().catch(() => {});   // the person pressed play: start it
-      main.querySelector(".play").hidden = true;
-    } }, playIcon()),
-    el("div", { class: "rtext" }, el("strong", {}, a.reciter || p.title), el("small", { class: "muted" }, a.source || "شبكة رافد")));
-  li.append(main); return li;
+/* A recording before anything plays: tap to open the player on it. */
+function recRow(it, onPlay) {
+  const r = it.rec, d = QPlayer.describe(r);
+  return el("li", { class: "rec" }, el("div", { class: "recmain" },
+    el("button", { class: "play", type: "button", "aria-label": "تشغيل " + it.title + (r.reciter ? " — " + r.reciter : ""), onclick: onPlay }, playIcon()),
+    el("div", { class: "rtext" }, el("strong", {}, it.title),
+      el("small", { class: "muted" }, [r.reciter, d.source, d.kind, d.occasion || d.date, d.dur ? QPlayer.clock(d.dur) : ""].filter(Boolean).join(" · ")))));
 }
-function svRow(x) {
-  const li = el("li", { class: "rec" });
-  const btn = el("button", { class: "play", type: "button", "aria-label": "تشغيل " + x.title + " — " + x.artist, onclick: () => {
-    stopAll();
-    // ShiaVoice's player needs ~600px; on a phone its play button falls off-screen. Lay it out wide and
-    // show the part that holds the play button and progress bar (title and reciter are already in our row).
-    li.append(el("div", { class: "player" },
-      el("div", { class: "svwrap" },
-        el("iframe", { class: "svframe", src: "https://shiavoice.com/embed-" + encodeURIComponent(x.id), title: x.title + " — صوت الشيعة", referrerpolicy: "strict-origin-when-cross-origin" })),
-      el("div", { class: "row pact" },
-        el("a", { class: "btn small", href: "https://shiavoice.com/play-" + encodeURIComponent(x.id), target: "_blank", rel: "noopener" }, dlIcon(), "تنزيل"),
-        el("span", { class: "muted small" }, "يفتح صفحة الملف في صوت الشيعة، وفيها زر التحميل"),
-        el("button", { class: "btn ghost small", type: "button", onclick: stopAll }, "إيقاف"))));
-    btn.hidden = true; li.classList.add("on");
-  } }, playIcon());
-  li.append(el("div", { class: "recmain" }, btn,
-    el("div", { class: "rtext" }, el("strong", {}, x.title),
-      el("small", { class: "muted" }, [x.artist, fmt(x.dur), x.album].filter(Boolean).join(" · "))),
-    el("a", { class: "icon ext", href: "https://shiavoice.com/play-" + encodeURIComponent(x.id), target: "_blank", rel: "noopener", "aria-label": "صفحة الملف في صوت الشيعة (للتحميل)", title: "صفحة الملف والتحميل" }, "↗")));
-  return li;
-}
-/* One recording at a time: closing the others stops their sound. */
-function stopAll() {
-  for (const p of document.querySelectorAll(".player")) { const li = p.closest("li"); p.remove(); li.classList.remove("on"); const b = li.querySelector(".play"); if (b) b.hidden = false; }
-}
-function dlIcon() { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "18"); s.setAttribute("height", "18"); s.setAttribute("aria-hidden", "true"); s.innerHTML = '<path fill="currentColor" d="M11 3h2v9.2l3.3-3.3 1.4 1.4L12 16l-5.7-5.7 1.4-1.4 3.3 3.3V3ZM5 18h14v2H5z"/>'; return s; }
 function playIcon() { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("width", "20"); s.setAttribute("height", "20"); s.setAttribute("aria-hidden", "true"); s.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>'; return s; }
 
 /* ---------- wiring ---------- */
@@ -284,6 +256,36 @@ $("#form").addEventListener("submit", (e) => {
 });
 $("#reBtn").addEventListener("click", () => { const t = $("#readText").value.trim(); if (t) runSearch(t, t.length < 60 && !t.includes("\n")); });
 $("#clearBtn").addEventListener("click", () => { $("#readBox").hidden = true; $("#thumb").hidden = true; clearResults(); });
+/* «قوائمي»: favourites and lists — the same ones as the full app on this phone. */
+function renderLists(openId) {
+  const box = $("#lists"), S = QPlayer.store;
+  box.replaceChildren(el("h2", { id: "listsT" }, "قوائمي"));
+  const L = openId && S.lists().find((x) => x.id === openId);
+  if (L) {
+    box.append(el("button", { class: "btn ghost small", type: "button", onclick: () => { QPlayer.stop(); renderLists(); } }, "→ كل القوائم"),
+      el("h3", { class: "lname" }, (L.id === "fav" ? "♥ " : "") + L.name));
+    const slot = el("div", { class: "qpslot" });
+    box.append(slot);
+    if (!L.items.length) slot.append(el("p", { class: "muted small" }, "القائمة فارغة."));
+    else QPlayer.mount(slot, { queue: QPlayer.listQueue(L), index: 0, autoplay: true, queueTitle: "القائمة" });
+    const edit = el("ul", { class: "ledit" }, L.items.map((it) => el("li", {}, el("span", {}, it.title + (it.rec.reciter ? " — " + it.rec.reciter : "")),
+      el("button", { class: "btn ghost small", type: "button", "aria-label": "أزل «" + it.title + "» من القائمة", onclick: () => { S.removeFromList(L.id, it.k); renderLists(L.id); } }, "إزالة"))));
+    if (L.items.length) box.append(el("details", {}, el("summary", {}, "تعديل القائمة"), edit));
+    if (L.id !== "fav") box.append(el("button", { class: "btn ghost small", type: "button", onclick: (e) => {
+      const b = e.currentTarget; if (b.dataset.sure) { S.deleteList(L.id); QPlayer.stop(); renderLists(); return; }
+      b.dataset.sure = "1"; b.textContent = "اضغط مرة أخرى لحذف «" + L.name + "»"; } }, "احذف القائمة"));
+    return;
+  }
+  const ul = el("ul", { class: "lall" });
+  for (const x of S.lists()) ul.append(el("li", {},
+    el("span", {}, el("strong", {}, (x.id === "fav" ? "♥ " : "") + x.name), el("small", { class: "muted" }, " · " + (x.items.length ? recCount(x.items.length) : "فارغة"))),
+    x.items.length ? el("button", { class: "btn small", type: "button", onclick: () => renderLists(x.id) }, "▶ شغّل") : null));
+  box.append(ul, el("p", { class: "muted small" }, "للإضافة: شغّل تسجيلاً ثم «أضف إلى المفضلة» أو «أضف إلى قائمة» تحت المشغّل."));
+}
+$("#listsBtn").addEventListener("click", () => {
+  const s = $("#lists"); s.hidden = !s.hidden; $("#listsBtn").setAttribute("aria-expanded", String(!s.hidden));
+  if (!s.hidden) { renderLists(); s.scrollIntoView({ behavior: "smooth", block: "start" }); }
+});
 $("#setBtn").addEventListener("click", () => {
   const s = $("#settings"); s.hidden = !s.hidden; $("#setBtn").setAttribute("aria-expanded", String(!s.hidden));
   if (!s.hidden) s.scrollIntoView({ behavior: "smooth", block: "start" });

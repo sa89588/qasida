@@ -15,7 +15,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@500;700&display=swap">
-<link rel="stylesheet" href="lite.css?v=7">
+<link rel="stylesheet" href="lite.css?v=8">
+<link rel="stylesheet" href="../player.css?v=21">
 </head>
 <body>
 <header class="bar">
@@ -24,6 +25,9 @@
     <span class="tag">بلا مفاتيح</span>
   </div>
   <button class="install" id="installBtn" type="button" hidden aria-label="ثبّت التطبيق على الشاشة الرئيسية">ثبّت</button>
+  <button class="icon" id="listsBtn" aria-label="قوائمي: المفضلة وقوائم التشغيل" aria-expanded="false" aria-controls="lists">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-6v6.3a3 3 0 1 0 2 2.7V12h3v-2h-5Z"/></svg>
+  </button>
   <button class="icon" id="setBtn" aria-label="الإعدادات" aria-expanded="false" aria-controls="settings">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Zm7.4-2.5.1-1-.1-1 2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.6c-.6.3-1.2.6-1.7 1l-2.5-1-2 3.5L6.6 11l-.1 1 .1 1-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5-2.2-1.9Z"/></svg>
   </button>
@@ -82,6 +86,8 @@
     <div><strong id="workT"></strong><div class="bar2"><i id="workP"></i></div></div>
   </div>
 
+  <section id="lists" class="card lists" hidden aria-labelledby="listsT"></section>
+
   <section id="results" aria-live="polite"></section>
 
   <section id="settings" class="card settings" hidden aria-labelledby="setT">
@@ -108,7 +114,7 @@
     </div>
     <p class="muted small">الفهرس يحوي العناوين وأسماء الرادودين وروابط التسجيلات، وكلماتِ ما جُمع من القصائد مرمّزةً للبحث فقط (تُقرأ الكلمات في مصدرها عبر «اقرأ الكلمات»)، ويُحدَّث كل بضع ساعات من صفحات <a href="https://shiavoice.com" target="_blank" rel="noopener">صوت الشيعة</a> العامة. التشغيل من مشغّل الموقع نفسه، والتحميل من صفحة الملف هناك.</p>
     <p class="muted small">القراءة من الصورة تجري على الهاتف نفسه؛ لا تُرسل الصورة إلى أي مكان.</p>
-    <p class="muted small"><a href="../index.html">النسخة الذكية (بمفاتيح)</a> · الإصدار ١١</p>
+    <p class="muted small"><a href="../index.html">النسخة الذكية (بمفاتيح)</a> · الإصدار ١٢</p>
   </section>
 </main>
 
@@ -116,7 +122,8 @@
 <script src="../match.js?v=13"></script>
 <script src="../voice.js?v=13"></script>
 <script src="../scanner.js?v=20"></script>
+<script src="../player.js?v=21"></script>
 <script src="library.js?v=8"></script>
-<script src="lite.js?v=11"></script>
+<script src="lite.js?v=12"></script>
 </body>
 </html>
