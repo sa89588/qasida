@@ -209,7 +209,9 @@ function catalogForApp() {
 
 /* ---------- the run ---------- */
 async function main() {
+  const had = Object.keys(state.books).length;
   await catalogue();
+  if (!had && Object.keys(state.books).length) checkpoint(false);     // first run: the catalogue at once
   const ids = Object.keys(state.books).map(Number).sort((a, b) => priority(a) - priority(b) || a - b);
   // Cards (and languages), most important books first, for part of the run.
   const cardUntil = Date.now() + left() * CARD_SHARE;
@@ -221,6 +223,7 @@ async function main() {
     if (cards % 200 === 0) log("cards", cards);
   }
   log("cards read this run:", cards, "| without card:", ids.filter((id) => !state.books[id].lang).length);
+  if (cards) checkpoint(false);                 // the new cards reach the app now, not hours later
   // Pages of the Arabic books, in order.
   let lastSave = Date.now();
   const stopAt = deadline - 4 * 60e3;
