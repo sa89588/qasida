@@ -123,7 +123,7 @@
     if (words.length > 2 && words[2][0] === "و") { const two = M.compact(words.slice(0, 2).join(" ")); if (two.length >= 7) keys.push(two); }
     const ks = keys.filter((k) => k.length >= 5);
     if (!ks.length) return [];
-    return S.lessons.filter((l) => ks.some((k) => l.key.includes(k))).slice(0, 15);
+    return S.lessons.filter((l) => ks.some((k) => l.key.includes(k))).sort((a, b) => (+b.n || 0) - (+a.n || 0)).slice(0, 15);
   }
   const sourceUrl = (s) => URLS[s.src] ? URLS[s.src](s.id) : "#";
   const textSearchUrl = (q, eshiaId) => "https://ar.lib.eshia.ir/search/" + (eshiaId ? eshiaId + "/" : "") + encodeURIComponent(String(q).trim());

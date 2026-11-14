@@ -108,7 +108,8 @@
   }
   function lessonsView(q, n) {
     const v = $("#view"); v.replaceChildren(); status("");
-    const list = q ? B.searchLessons(q) : S.lessons;
+    // The most followed first: a lesson series many students follow is usually the one to start with.
+    const list = (q ? B.searchLessons(q) : S.lessons.slice()).sort((a, b) => (+b.n || 0) - (+a.n || 0));
     const form = el("form", { class: "search", onsubmit: (e) => { e.preventDefault(); go({ l: e.target.lq.value.trim() }); } },
       el("input", { name: "lq", type: "search", value: q, placeholder: "كتاب أو أستاذ أو علم: المكاسب، الرسائل، المنطق…", "aria-label": "ابحث في قنوات الدروس" }), el("button", { class: "go", type: "submit" }, "ابحث"));
     v.append(el("a", { class: "back", href: "#" }, "→ الرئيسية"), el("h2", { class: "title", text: "دروس وقنوات التلكرام" }),
@@ -187,7 +188,7 @@
         el("a", { class: "btn" + (i === 0 ? " primary" : ""), href: e.url(q), target: "_blank", rel: "noopener" }, e.name + " ↗"),
         el("span", { class: "muted small", text: e.note })))),
       el("p", { class: "muted small", text: "كل مكتبة تبحث بمحركها وتعرض النتائج عندها." })));
-    const ls = B.searchLessons(q);
+    const ls = B.searchLessons(q).sort((a, b) => (+b.n || 0) - (+a.n || 0));
     if (ls.length) {
       const lu = el("ul", { class: "books" }); ls.slice(0, 6).forEach((l) => lu.append(lessonRow(l)));
       v.append(el("section", { class: "card" }, el("h2", { class: "sec", text: "دروس وقنوات في التلكرام (" + num(ls.length) + ")" }), lu,
