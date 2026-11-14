@@ -19,8 +19,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=21">
-<link rel="stylesheet" href="player.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
+<link rel="stylesheet" href="player.css?v=22">
 </head>
 <body>
 <header class="appbar">
@@ -127,8 +127,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
   <section class="view" id="view-settings" hidden aria-labelledby="setH">
     <div class="view-head"><h2 id="setH">الإعدادات</h2></div>
 
-    <div class="card">
-      <h3 class="card-t">التعرّف الذكي على أي قصيدة</h3>
+    <details class="card fold" id="keysCard">
+      <summary class="card-t">التعرّف الذكي على أي قصيدة</summary>
       <p class="muted small">بدونه يتعرّف التطبيق فقط على القصائد الموجودة في الفهرس. بعد تفعيله يقرأ أي صفحة، حتى لو لم يكن فيها عنوان أو اسم شاعر، ثم يبحث عن تسجيلها في يوتيوب ويشغّله هنا. المفتاحان مجانيان، ويُحفظان على هاتفك فقط.</p>
       <form id="keysForm" class="stack">
         <label class="f" for="kGemini">
@@ -161,7 +161,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
         <p class="small" id="keysMsg" aria-live="polite"></p>
       </form>
       <p class="muted small">عند التعرّف الذكي تُرسل صورة الصفحة إلى Google لقراءتها. أما القصائد الموجودة في الفهرس فتُقرأ على هاتفك دون إرسال شيء.</p>
-    </div>
+    </details>
 
     <div class="card">
       <h3 class="card-t">التشغيل</h3>
@@ -169,8 +169,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <p class="muted small">مطفأ افتراضياً. عند تشغيله يبدأ أول تسجيل يمكن تشغيله وحده (يوتيوب أو رافد أو ملفاتك)؛ مشغّل صوت الشيعة لا يبدأ إلا بضغطة منك. التكرار (بلا تكرار · كرّر هذا · كرّر الكل) من الزر بجانب التسجيلات، والمفضلة وقوائم التشغيل من «قوائمي».</p>
     </div>
 
-    <div class="card" id="syncCard">
-      <h3 class="card-t">مفاتيحي على كل أجهزتي</h3>
+    <details class="card fold" id="syncCard">
+      <summary class="card-t">مفاتيحي على كل أجهزتي</summary>
       <p class="muted small">احفظ المفتاحين مرة واحدة، مشفّرين بكلمة سر، في مستودعك على GitHub. بعدها افتح التطبيق من أي جهاز (آيباد، هاتف آخر) واسترجعهما بكلمة السر نفسها. يُحفظ النص المشفّر فقط؛ لا يُفتح بدون كلمة السر.</p>
       <label class="f" for="syncPass"><span>كلمة السر (١٢ حرفاً على الأقل — مثلاً أربع كلمات لا يعرفها غيرك)</span>
         <input type="password" id="syncPass" autocomplete="off" spellcheck="false"></label>
@@ -189,7 +189,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
           <li>لتغيير المفاتيح لاحقاً احفظها من جديد؛ يُؤخذ أحدث ملف دائماً.</li>
         </ol>
       </details>
-    </div>
+    </details>
 
     <div class="card">
       <h3 class="card-t">سرعة التعرّف الذكي</h3>
@@ -225,8 +225,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <div class="row gap"><button type="button" class="btn" id="clearStore" hidden>احذف التسجيلات المحفوظة للاستماع دون إنترنت</button></div>
     </div>
 
-    <div class="card">
-      <h3 class="card-t">إضافاتي على هذا الهاتف</h3>
+    <details class="card fold">
+      <summary class="card-t">إضافاتي على هذا الهاتف</summary>
       <p class="muted small" id="mineInfo"></p>
       <div class="row gap">
         <button type="button" class="btn" id="exportBtn">شارك إضافاتي مع مشرف الفهرس</button>
@@ -234,13 +234,13 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <p class="small muted" id="exportMsg" aria-live="polite"></p>
       <label class="vh" for="exportBox">نص الإضافات</label>
       <textarea id="exportBox" rows="4" readonly hidden dir="ltr"></textarea>
-    </div>
+    </details>
 
     <div class="card">
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
       <p class="muted small"><a href="books/">مكتبة الكتب</a>: فهرس كتب الحوزة والكتب الشيعية العربية، والبحث في نصوصها.</p>
-      <p class="muted small" id="verLine">الإصدار ٢١</p>
+      <p class="muted small" id="verLine">الإصدار ٢٢</p>
     </div>
   </section>
 </main>
@@ -297,6 +297,6 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <script src="keysync.js?v=21"></script>
 <script src="scanner.js?v=21"></script>
 <script src="player.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

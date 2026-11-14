@@ -123,7 +123,7 @@ function route(){
   $$(".tabbar a").forEach((a) => { if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (state.view !== view) window.scrollTo({ top: 0, behavior: "auto" });
   state.view = view;
-  if (view === "settings") fillSettings();
+  if (view === "settings"){ fillSettings(); if (!S.ready()) $("#keysCard").open = true; }
   if (view === "scan") renderSmartCard();
 }
 

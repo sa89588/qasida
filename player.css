@@ -63,3 +63,21 @@
   .qp-b{width:42px;height:42px} .qp-play{width:58px;height:58px}
   .qp-art{width:52px;height:52px} .qp-art.ph{width:80px;height:45px}
 }
+/* v22: compact */
+.qp{gap:9px}
+.qp-art{width:52px;height:52px;border-radius:10px}
+.qp-art.ph{width:80px;height:45px}
+.qp-art svg{width:24px;height:24px}
+.qp-title{font-size:.98rem}
+.qp-who{font-size:.82rem}
+.qp-b{width:40px;height:40px}
+.qp-b svg{width:19px;height:19px}
+.qp-play{width:54px;height:54px}
+.qp-play svg{width:26px;height:26px}
+.qp-chip{min-height:34px;padding:4px 11px;font-size:.82rem}
+.qp-switch{min-height:34px;font-size:.82rem}
+.qp-row{min-height:46px;padding:6px 8px;gap:8px;border-radius:10px}
+.qp-th{width:52px;height:30px}
+.qp-th.au{width:34px;height:34px}
+.qp-queue{gap:4px}
+.qp-more{min-height:38px}
