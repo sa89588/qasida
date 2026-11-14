@@ -48,6 +48,10 @@ const kafi = m.find((x) => x.sources.some((s) => s[1] === 11005));
 assert.deepEqual(kafi.sources.map((s) => s[0]).sort(), ["e", "s"], "same book from two libraries is one entry");
 assert.equal(m.filter((x) => x.title === "كتاب الطهارة").length, 2, "same title, different authors: two books");
 assert.equal(merge([{ src: "a", id: 1, title: "الغيبة (فارسى)", author: "الطوسي", lang: "fa" }, { src: "e", id: 2, title: "الغيبة", author: "الطوسي", lang: "ar" }]).length, 2, "a Persian translation stays apart");
+const mh = merge([{ src: "e", id: 1, title: "منهاج الصالحين", author: "السيستاني، السيد علي", lang: "ar" }, { src: "e", id: 2, title: "منهاج الصالحين", author: "الخوئي، السيد أبو القاسم", lang: "ar" },
+  { src: "n", id: "منهاج-الصالحين", title: "منهاج الصالحين", author: "", lang: "ar" }, { src: "n", id: "منهاج-الصالحين-2", title: "منهاج الصالحين", author: "", lang: "ar" }]);
+assert.deepEqual(mh.map((x) => x.sources.length), [1, 1, 2], "copies without an author, of a title several authors wrote, stay apart");
+assert.equal(merge([{ src: "e", id: 1, title: "الكافي", author: "الكليني", lang: "ar" }, { src: "n", id: "الكافي", title: "الكافي", author: "", lang: "ar" }]).length, 1, "one author: the copy joins it");
 // Telegram previews
 const tgHtml = '<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message" data-post="Qa_droos/77"><div class="tgme_widget_message_document_title accent_color" dir="auto">بين_المناهج_الحوزوية.pdf</div><div class="tgme_widget_message_document_extra" dir="auto">68.9 KB</div><div class="tgme_widget_message_text js-message_text" dir="auto">شرح المكاسب المحرمة | الشيخ عبدالرضا الرويمي دورة كاملة <a href="https://t.me/dhrghyeyhfyytuffu" target="_blank">https://t.me/dhrghyeyhfyytuffu</a><br/>رابط القناة: <a href="https://t.me/s">x</a></div></div>';
 const posts = parsePreview(tgHtml, "Qa_droos");

@@ -55,7 +55,15 @@ export function merge(rows) {
     let group = byTitle.get(k);
     if (!group) byTitle.set(k, group = []);
     const lg = langClass(r.lang);
-    let e = group.find((g) => (!lg || !g.lang || g.lang === lg) && (!at.size || !g.at.size || [...at].some((x) => g.at.has(x))));
+    const sameLang = (g) => !lg || !g.lang || g.lang === lg;
+    let e;
+    if (at.size) e = group.find((g) => sameLang(g) && !g.anon && (!g.at.size || [...at].some((x) => g.at.has(x))));
+    else {
+      // No author: the book of that name when there is only one; with several authors it cannot be told which.
+      const named = group.filter((g) => sameLang(g) && !g.anon);
+      e = named.length === 1 ? named[0] : group.find((g) => sameLang(g) && g.anon);
+      if (!e && named.length > 1) { e = { at: new Set(), rows: [], lang: "", anon: true }; group.push(e); entries.push(e); }
+    }
     if (!e) { e = { at: new Set(), rows: [], lang: "" }; group.push(e); entries.push(e); }
     if (lg) e.lang = lg;
     for (const x of at) e.at.add(x);
