@@ -28,7 +28,9 @@
   const S = B.state;
   const SRC = { e: { short: "مدرسة الفقاهة", act: "اقرأه", cls: "e" }, a: { short: "مكتبة أهل البيت", act: "اقرأه", cls: "e" },
     f: { short: "شبكة الفكر", act: "حمّل PDF", cls: "f" }, s: { short: "كتب شيعية", act: "حمّل PDF", cls: "s" },
-    h: { short: "الإمامين الحسنين", act: "اقرأه", cls: "f" }, i: { short: "العتبة الحسينية", act: "حمّل PDF", cls: "s" }, k: { short: "مكتبة الإمام الكاظم", act: "اقرأه", cls: "f" } };
+    h: { short: "الإمامين الحسنين", act: "اقرأه", cls: "f" }, i: { short: "العتبة الحسينية", act: "حمّل PDF", cls: "s" }, k: { short: "مكتبة الإمام الكاظم", act: "اقرأه", cls: "f" },
+    t: { short: "تلكرام", act: "افتح في التلكرام", cls: "t" } };
+  const KINDS = { r: "بحوث ودراسات", j: "المجلات", b: "الكتب" };
   const srcOf = (k) => SRC[k] || { short: k, act: "افتحه", cls: "" };
   const diedText = (b) => b.died ? "ت " + ar(b.died) + " هـ" : "";
 
@@ -40,6 +42,8 @@
     if (p.get("q")) { $("#q").value = p.get("q"); return results(p.get("q")); }
     if (p.get("b")) return bookView(p.get("b"));
     if (p.get("c")) return fieldView(+p.get("c"), +(p.get("n") || 60));
+    if (p.get("k")) return kindView(p.get("k"), +(p.get("n") || 60));
+    if (p.has("l")) return lessonsView(p.get("l") || "", +(p.get("n") || 80));
     $("#q").value = "";
     home();
   }
@@ -53,7 +57,15 @@
     S.fields.forEach((name, i) => { if (counts.get(i)) grid.append(el("a", { class: "cat", href: "#c=" + i }, el("b", { text: name }), el("span", { text: count(counts.get(i), W_BOOK) }))); });
     const langs = el("label", { class: "check" }, el("input", { type: "checkbox", onchange: (e) => { setPref("allLangs", e.target.checked); home(); } }), "أظهر الكتب الفارسية والإنجليزية أيضاً");
     langs.firstChild.checked = prefs().allLangs;
-    v.append(el("div", { class: "card" }, el("h2", { class: "sec", text: "تصفّح حسب العلم" }), grid, langs),
+    const kinds = { r: 0, j: 0 };
+    for (const b of S.books) if (shown(b) && kinds[b.kind] != null) kinds[b.kind]++;
+    const tgFiles = S.books.filter((b) => b.sources.some((s) => s.src === "t")).length;
+    const sections = el("div", { class: "cats" },
+      el("a", { class: "cat sect", href: "#k=r" }, el("b", { text: "بحوث ودراسات" }), el("span", { text: count(kinds.r, W_BOOK) + " · ومعها محركات الأطاريح والبحوث" })),
+      el("a", { class: "cat sect", href: "#k=j" }, el("b", { text: "المجلات" }), el("span", { text: num(kinds.j) + " عدداً ومجلة" })),
+      el("a", { class: "cat sect", href: "#l=" }, el("b", { text: "دروس وقنوات التلكرام" }), el("span", { text: num(S.lessons.length) + " قناة · " + num(tgFiles) + " ملفاً" })));
+    v.append(el("div", { class: "card" }, el("h2", { class: "sec", text: "الأقسام" }), sections),
+      el("div", { class: "card" }, el("h2", { class: "sec", text: "تصفّح حسب العلم" }), grid, langs),
       el("div", { class: "card tips" }, el("h2", { class: "sec", text: "كيف تبحث" }),
         el("ul", {},
           el("li", {}, "اسم كتاب أو مؤلف أو موضوع: ", el("i", { text: "جواهر الكلام" }), " · ", el("i", { text: "الشيخ المفيد" }), " · ", el("i", { text: "المواريث" })),
@@ -78,12 +90,41 @@
     v.append(ul);
     if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#c=" + fi + "&n=" + (n + 120) }, "عرض المزيد (" + num(list.length - n) + ")"));
   }
+  function kindView(k, n) {
+    const v = $("#view"); v.replaceChildren(); status("");
+    const list = S.books.filter((b) => b.kind === k && shown(b)).sort((a, b) => b.sources.length - a.sources.length || a.title.localeCompare(b.title, "ar", { numeric: true }));
+    v.append(el("a", { class: "back", href: "#" }, "→ الرئيسية"), el("h2", { class: "title", text: KINDS[k] || "" }), el("p", { class: "muted small", text: count(list.length, W_BOOK) + " في الفهرس" }));
+    if (k === "r") v.append(el("div", { class: "card" }, el("p", { class: "small", text: "للبحث في الأطاريح والرسائل الجامعية والبحوث المحكّمة (أكثر من ١٧٠ ألف أطروحة): اكتب الموضوع في البحث فوق ثم «مكتبة العتبة العباسية (الكفيل) الرقمية»." })));
+    const ul = el("ul", { class: "books" });
+    list.slice(0, n).forEach((b) => ul.append(bookRow(b)));
+    v.append(ul);
+    if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#k=" + k + "&n=" + (n + 120) }, "عرض المزيد (" + num(list.length - n) + ")"));
+  }
+  function lessonRow(l) {
+    const sub = [l.t && M.compact(l.t) !== M.compact(l.d) ? l.d : "", l.n ? (/^\d+$/.test(l.n) ? num(+l.n) : l.n) + " مشترك" : ""].filter(Boolean).join(" · ");
+    return el("li", {}, el("a", { class: "brow", href: "https://t.me/" + l.u, target: "_blank", rel: "noopener" },
+      el("b", { text: l.t || l.d }), sub ? el("span", { class: "muted small", text: sub }) : null,
+      el("span", { class: "srcs" }, el("span", { class: "src t", text: "افتح في التلكرام ↗" }), el("span", { class: "muted small", dir: "ltr", text: "@" + l.u }))));
+  }
+  function lessonsView(q, n) {
+    const v = $("#view"); v.replaceChildren(); status("");
+    const list = q ? B.searchLessons(q) : S.lessons;
+    const form = el("form", { class: "search", onsubmit: (e) => { e.preventDefault(); go({ l: e.target.lq.value.trim() }); } },
+      el("input", { name: "lq", type: "search", value: q, placeholder: "كتاب أو أستاذ أو علم: المكاسب، الرسائل، المنطق…", "aria-label": "ابحث في قنوات الدروس" }), el("button", { class: "go", type: "submit" }, "ابحث"));
+    v.append(el("a", { class: "back", href: "#" }, "→ الرئيسية"), el("h2", { class: "title", text: "دروس وقنوات التلكرام" }),
+      el("p", { class: "muted small", text: "قنوات دروس الحوزة (شروح الكتب الدراسية والبحث الخارج) وقنوات الكتب، كما تجمعها قنوات الأدلة: " + S.channels.map((c) => c[1]).join("، ") + ". تفتح في تطبيق التلكرام." }),
+      form, el("p", { class: "muted small", text: count(list.length, ["قناة واحدة", "قناتان", "قنوات", "قناة"]) }));
+    const ul = el("ul", { class: "books" });
+    list.slice(0, n).forEach((l) => ul.append(lessonRow(l)));
+    v.append(ul);
+    if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#l=" + encodeURIComponent(q) + "&n=" + (n + 200) }, "عرض المزيد (" + num(list.length - n) + ")"));
+  }
   function badges(b) { return el("span", { class: "srcs" }, b.sources.filter((s, i, a) => a.findIndex((x) => x.src === s.src) === i).map((s) => el("span", { class: "src " + srcOf(s.src).cls, text: srcOf(s.src).short }))); }
   function bookRow(b) {
     return el("li", {}, el("a", { class: "brow", href: "#b=" + b.key },
       el("b", { text: b.title }),
       el("span", { class: "muted small", text: [b.author, diedText(b)].filter(Boolean).join(" · ") }),
-      badges(b)));
+      badges(b), b.kind === "r" ? el("span", { class: "kind", text: "بحث" }) : null));
   }
 
   /* ---------- a book ---------- */
@@ -126,7 +167,14 @@
           el("dt", {}, "العلم"), el("dd", {}, S.fields[b.field] || "—"),
           b.topics ? [el("dt", {}, "مواضيعه"), el("dd", {}, b.topics)] : null,
           vols > 1 ? [el("dt", {}, "الأجزاء"), el("dd", {}, num(vols))] : null),
-        el("h3", { class: "sec", text: "أين تجده" }), where, inside));
+        el("h3", { class: "sec", text: "أين تجده" }), where, inside, lessonsOf(b)));
+  }
+
+  function lessonsOf(b) {
+    const ls = B.lessonsFor(b);
+    if (!ls.length) return null;
+    const ul = el("ul", { class: "books" }); ls.forEach((l) => ul.append(lessonRow(l)));
+    return el("section", { class: "lessons" }, el("h3", { class: "sec", text: "دروس هذا الكتاب في التلكرام" }), ul);
   }
 
   /* ---------- search ---------- */
@@ -139,7 +187,13 @@
         el("a", { class: "btn" + (i === 0 ? " primary" : ""), href: e.url(q), target: "_blank", rel: "noopener" }, e.name + " ↗"),
         el("span", { class: "muted small", text: e.note })))),
       el("p", { class: "muted small", text: "كل مكتبة تبحث بمحركها وتعرض النتائج عندها." })));
-    if (!found.length) { status(""); v.append(el("p", { class: "card muted", text: "لا كتاب بهذا العنوان أو لهذا المؤلف في الفهرس." })); return; }
+    const ls = B.searchLessons(q);
+    if (ls.length) {
+      const lu = el("ul", { class: "books" }); ls.slice(0, 6).forEach((l) => lu.append(lessonRow(l)));
+      v.append(el("section", { class: "card" }, el("h2", { class: "sec", text: "دروس وقنوات في التلكرام (" + num(ls.length) + ")" }), lu,
+        ls.length > 6 ? el("a", { class: "btn ghost more", href: "#l=" + encodeURIComponent(q) }, "كل القنوات") : null));
+    }
+    if (!found.length) { status(""); v.prepend(el("p", { class: "card muted", text: "لا كتاب ولا بحث بهذا العنوان أو لهذا المؤلف في الفهرس؛ جرّب محركات البحث في النصوص." })); return; }
     status(count(found.length, W_BOOK) + " بهذا العنوان أو لهذا المؤلف أو في هذا الموضوع.");
     const ul = el("ul", { class: "books" });
     found.slice(0, 30).forEach((b) => ul.append(bookRow(b)));

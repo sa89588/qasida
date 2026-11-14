@@ -105,3 +105,7 @@ main>*{min-width:0}
 .files{margin:0;list-style:none;padding-inline-start:6px;display:grid;gap:4px;max-height:50vh;overflow:auto;font-size:.9rem}
 .files a{display:inline-block;min-height:32px;padding:4px 0}
 .where .files li{display:list-item;padding:0;min-height:0;background:none;border:0;border-radius:0}
+.src.t{color:#2a8bc4;border-color:color-mix(in srgb,#2a8bc4 40%,transparent)}
+.cat.sect{background:color-mix(in srgb,var(--accent) 7%,var(--surface2))}
+.kind{align-self:flex-start;font-size:.72rem;line-height:1.7;padding:0 8px;border-radius:99px;background:color-mix(in srgb,var(--brass) 15%,transparent);color:var(--brass)}
+.lessons{display:grid;gap:8px;margin-top:6px}

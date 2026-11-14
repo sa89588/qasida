@@ -1,5 +1,5 @@
 name: مكتبة الكتب
-# فهرس موحّد للكتب من: مكتبة مدرسة الفقاهة، شبكة الفكر، كتب شيعية — الكتاب الواحد مرة واحدة مع كل مصادره.
+# فهرس موحّد للكتب والبحوث من سبع مكتبات وقنوات التلكرام — الكتاب الواحد مرة واحدة مع كل مصادره.
 # مرة كل يوم: قوائم المكتبات كاملة، وبطاقات كتب مدرسة الفقاهة جزءاً بعد جزء. ينشر في الفرع library.
 # البحث داخل نصوص الكتب يجري بمحرك مدرسة الفقاهة نفسه، والتطبيق يفتحه مباشرة؛ لا تُنسخ صفحات أي كتاب.
 on:
@@ -36,6 +36,7 @@ jobs:
         env:
           BOOKS_MINUTES: "90"
           BOOKS_RATE: "1.5"
+          BOOKS_TG_REQUESTS: "1800"
           BOOKS_PUBLISH: bash tools/books/publish.sh books-data
           BOOKS_BRANCH: library
           PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
