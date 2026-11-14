@@ -247,7 +247,7 @@
     try { await B.load((t) => work(t)); }
     catch { work(null); status("فهرس الكتب الجديد يُجهَّز الآن ويصل خلال ساعة تقريباً. أعد فتح الصفحة بعدها.", true); return; }
     work(null);
-    B.onChange(() => { paintStats(); if (!params().toString()) home(); });
+    B.onChange(() => { paintStats(); if (!params().toString()) home(); else if (params().has("m")) librariesView(); });
     route();
   })();
 })();
