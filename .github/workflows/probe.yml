@@ -1,4 +1,4 @@
-name: probe books collector
+name: probe book libraries
 on:
   push:
     branches: [probe]
@@ -7,29 +7,11 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          ref: library
-          path: books-data
-          fetch-depth: 1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: node tools/books/test.mjs
-      - name: collect
-        env:
-          BOOKS_MINUTES: "14"
-          BOOKS_RATE: "1.5"
-          BOOKS_BRANCH: library-test
-          BOOKS_PUBLISH: bash tools/books/publish.sh books-data
-          PUSH_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        run: node tools/books/collect.mjs books-data 2>&1 | tee collect.log
-      - name: log
-        if: always()
+      - run: bash tools/probe/probe.sh
+      - name: publish results to probe-out
         run: |
-          mkdir -p out && cp collect.log out/ && cd out && git init -q -b probe-out && git config user.name probe && git config user.email actions@users.noreply.github.com
-          git add -A && git commit -qm log && git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" probe-out
+          cd out && git init -q -b probe-out && git config user.name probe && git config user.email actions@users.noreply.github.com
+          git add -A && git commit -qm probe && git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" probe-out
