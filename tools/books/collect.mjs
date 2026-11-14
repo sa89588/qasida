@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
 import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim } from "./sources.mjs";
 import { merge, FIELDS } from "./merge.mjs";
+import { telegram, CHANNELS } from "./telegram.mjs";
 
 const require = createRequire(import.meta.url);
 const W = require("../../books/words.js");
@@ -98,7 +99,8 @@ const LIBRARIES = {
   s: { name: "كتب شيعية", url: "https://shiabooks.net/" },
   h: { name: "شبكة الإمامين الحسنين", url: "https://www.alhassanain.org/arabic/?com=book" },
   i: { name: "إصدارات العتبة الحسينية", url: "https://publication.imamhussain.org/books" },
-  k: { name: "مكتبة الإمام الكاظم (ع)", url: "https://www.imamkadhim.com/" }
+  k: { name: "مكتبة الإمام الكاظم (ع)", url: "https://www.imamkadhim.com/" },
+  t: { name: "قنوات التلكرام", url: "https://t.me/" }
 };
 const ESHIA_FIELD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 10, 10, 11, 13, 12];   // eshia's fields → ours
 function eshiaRows() {
@@ -107,13 +109,19 @@ function eshiaRows() {
     died: (b.card && b.card.died) || 0, fullAuthor: (b.card && b.card.author) || "", topics: "" }));
 }
 function write() {
-  const rows = [...eshiaRows(), ...Object.values(state.sources).flat()];
+  const tg = state.tg || { files: [], lessons: {} };
+  const tgRows = tg.files.map((f) => ({ src: "t", id: f.ch + "/" + f.post, title: f.title, label: [f.title !== f.file.replace(/\.[a-z0-9]+$/i, "").replace(/_/g, " ") ? f.file : "", f.size].filter(Boolean).join(" · ") || f.title,
+    author: "", field: "", topics: "", paper: f.ch === "Karbala_Center", lang: /[پچژگ]|[یک]/.test(f.title) && !/[ي]/.test(f.title) ? "fa" : "ar" }));
+  const rows = [...eshiaRows(), ...Object.values(state.sources).flat(), ...tgRows];
   const entries = merge(rows);
-  const books = entries.map((e) => [e.title, e.author, e.field, e.lang, e.died, e.fullAuthor, e.topics, e.sources]);
+  const books = entries.map((e) => [e.title, e.author, e.field, e.lang, e.died, e.fullAuthor, e.topics, e.sources, e.kind]);
+  // Lesson and library channels on Telegram: [username, what it is, the channel that listed it]
+  const lessons = Object.values(tg.lessons || {}).map((l) => [l.u, l.d, l.ch]).sort((a, b) => a[1].localeCompare(b[1], "ar"));
   const counts = {}; for (const r of rows) counts[r.src] = (counts[r.src] || 0) + 1;
   fs.writeFileSync(P("catalog.json"), JSON.stringify({ format: 2, updated: new Date().toISOString(), fields: FIELDS,
     sources: Object.fromEntries(Object.entries(LIBRARIES).map(([k, v]) => [k, { ...v, count: counts[k] || 0 }])),
-    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes]]"], books }));
+    channels: CHANNELS.map((c) => [c.ch, c.name]),
+    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes,label]]", "kind b|r|j"], books, lessons }));
   // The page-text index of earlier versions is no longer used.
   fs.rmSync(P("seg"), { recursive: true, force: true }); fs.rmSync(P("index.json"), { force: true });
   fs.writeFileSync(P("state.json"), JSON.stringify(state));
@@ -129,6 +137,9 @@ async function main() {
     const rows = await fn(get, log).catch((e) => { log(k, "failed", e.message); return null; });
     if (rows && rows.length >= min) state.sources[k] = rows; else log(k, "kept the previous list", rows ? rows.length : 0);
   }));
+  // Telegram channels (a part each run, then only what is new).
+  state.tg = state.tg || {};
+  await telegram(get, log, state.tg, +process.env.BOOKS_TG_REQUESTS || 1800).catch((e) => log("telegram failed", e.message));
   write();
   // Cards of eshia's books, until the time is up (the most read fields first).
   const ids = Object.keys(state.books).filter((id) => !state.books[id].lang).sort((a, b) => (state.books[a].c ?? 99) - (state.books[b].c ?? 99) || a - b);
