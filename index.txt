@@ -1,0 +1,15 @@
+1 | https://www.aljawadain.org/library/books/all-books | 200 text/html; charset=UTF-8 https://www.aljawadain.org/library/books/all-books | 147392
+2 | https://www.aljawadain.org/library/books/all-books?page=2 | 200 text/html; charset=UTF-8 https://www.aljawadain.org/library/books/all-books?page=2 | 147296
+3 | https://www.aljawadain.org/library/books/single?book_id=1487 | 200 text/html; charset=UTF-8 https://www.aljawadain.org/library/books/single?book_id=1487 | 17959
+4 | https://www.aljawadain.org/library/researches/all-researches | 200 text/html; charset=UTF-8 https://www.aljawadain.org/library/researches/all-researches | 49717
+5 | https://bibliography.mk.iq/share/110588 | 200 text/html; charset=UTF-8 https://bibliography.mk.iq/share/110588 | 26065
+6 | https://bibliography.mk.iq/section/2 | 200 text/html; charset=UTF-8 https://bibliography.mk.iq/section/2 | 145236
+7 | https://bibliography.mk.iq/section/3 | 200 text/html; charset=UTF-8 https://bibliography.mk.iq/section/3 | 132070
+8 | https://bibliography.mk.iq/section/4 | 200 text/html; charset=UTF-8 https://bibliography.mk.iq/section/4 | 76374
+9 | https://waqfeya.net/search?q=%D8%A7%D9%84%D9%85%D9%83%D8%A7%D8%B3%D8%A8 | 200 text/html; charset=utf-8 https://waqfeya.net/search?q=%D8%A7%D9%84%D9%85%D9%83%D8%A7%D8%B3%D8%A8 | 44263
+10 | https://najafdesertlibrary.com/sitemaps/sitemap-static.xml | 200 text/xml; charset=utf-8 https://najafdesertlibrary.com/sitemaps/sitemap-static.xml | 562
+11 | https://najafdesertlibrary.com/search?q=%D8%A7%D9%84%D9%85%D9%83%D8%A7%D8%B3%D8%A8 | 200 text/html; charset=utf-8 https://najafdesertlibrary.com/search?q=%D8%A7%D9%84%D9%85%D9%83%D8%A7%D8%B3%D8%A8 | 196788
+12 | https://turath.alkafeel.net/books?page=9 | 200 text/html; charset=UTF-8 https://turath.alkafeel.net/books?page=9 | 50407
+13 | https://turath.alkafeel.net/books?page=12 | 200 text/html; charset=UTF-8 https://turath.alkafeel.net/books?page=12 | 51548
+14 | https://t.me/s/narjes_library | 200 text/html; charset=utf-8 https://t.me/narjes_library | 9686
+15 | https://t.me/s/imamalilibrary | 200 text/html; charset=utf-8 https://t.me/imamalilibrary | 9687
