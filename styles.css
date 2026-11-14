@@ -428,3 +428,5 @@ details.card.fold:not([open]){gap:0}
   .rec .th{width:48px;height:34px}
 }
 @media (max-width:420px){ .libbar{flex-direction:row;align-items:center} }
+.idle{cursor:pointer;-webkit-user-select:none;user-select:none}
+.idle:active .start{transform:scale(.97)}

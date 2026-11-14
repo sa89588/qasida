@@ -1193,6 +1193,8 @@ if ("serviceWorker" in navigator){
 
 /* ---------- wiring ---------- */
 $("#camBtn").addEventListener("click", startCamera);
+// The whole waiting area opens the camera, not only the round button.
+$("#idle").addEventListener("click", (e) => { if (!e.target.closest("#camBtn")) $("#camBtn").click(); });
 $("#stopBtn").addEventListener("click", stopCamera);
 $("#shotBtn").addEventListener("click", snapNow);
 $("#torchBtn").addEventListener("click", async () => {
