@@ -8,5 +8,5 @@ git config user.name "qasida-books"
 git config user.email "actions@users.noreply.github.com"
 git add -A
 commit=$(git commit-tree "$(git write-tree)" -m "books $(date -u +%F-%H%M)")
-git push -qf "$PUSH_URL" "$commit:refs/heads/${BOOKS_BRANCH:-books}"
+git push -qf "$PUSH_URL" "$commit:refs/heads/${BOOKS_BRANCH:-library}"
 echo "published books data $commit"
