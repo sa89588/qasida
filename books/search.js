@@ -33,7 +33,7 @@
     throw last || new Error("offline");
   }
 
-  const S = { catalog: null, books: [], byKey: new Map(), fields: [], sources: {}, lessons: [], channels: [] };
+  const S = { catalog: null, books: [], byKey: new Map(), fields: [], sources: {}, lessons: [], channels: [], libraries: [] };
   const listeners = [];
   const skey = (s) => s[0] + s[1];
   function take(c) {
@@ -47,6 +47,7 @@
     });
     S.lessons = (c.lessons || []).map(([u, d, ch, t, n, x]) => ({ u, d, ch, t: t || "", n: n || "", x: x || "", key: M.compact(d + " " + (t || "") + " " + (x || "")) + " " + u.toLowerCase() }));
     S.channels = c.channels || [];
+    S.libraries = (c.libraries || []).map(([u, t, n, x, name]) => ({ u, t: t || name, n: n || "", x: x || "", d: name || "" }));
     S.byKey = new Map();
     for (const b of S.books) for (const s of b.sources) S.byKey.set(s.src + s.id, b);
     for (const f of listeners) try { f(); } catch {}
@@ -100,13 +101,32 @@
     h: (id) => "https://www.alhassanain.org/arabic/?com=book&id=" + id,
     i: (id) => "https://publication.imamhussain.org/post/" + id,
     k: (id) => "https://www.imamkadhim.com/?post_type=book&p=" + id,
+    n: (id) => "https://najafdesertlibrary.com/book/" + encodeURIComponent(id),
+    m: (id) => "https://bibliography.mk.iq/share/" + id,
+    u: (id) => "https://turath.alkafeel.net/book/" + id,
+    j: (id) => /^r/.test(id) ? "https://www.aljawadain.org/library/researches/single?research_id=" + String(id).slice(1) : "https://www.aljawadain.org/library/books/single?book_id=" + id,
     t: (id) => "https://t.me/" + id
   };
   /* Search engines that look inside the books themselves (each opens its own results). */
   const TEXT_ENGINES = [
-    { name: "مكتبة مدرسة الفقاهة", note: "نصوص آلاف كتب الحوزة، صفحةً صفحة", url: (q) => "https://ar.lib.eshia.ir/search/" + encodeURIComponent(q) },
-    { name: "مكتبة أهل البيت (ع)", note: "نصوص كتبها كاملة", url: (q) => "https://ablibrary.net/search?query=" + encodeURIComponent(q) },
-    { name: "مكتبة العتبة العباسية (الكفيل) الرقمية", note: "الكتب والأطاريح الجامعية والبحوث والمجلات (أكثر من ٣٠٠ ألف مصدر)", url: (q) => "https://library.alkafeel.net/dic/search/?t=all&q=" + encodeURIComponent(q) }
+    { name: "مكتبة مدرسة الفقاهة", site: "https://ar.lib.eshia.ir/", note: "نصوص آلاف كتب الحوزة، صفحةً صفحة", url: (q) => "https://ar.lib.eshia.ir/search/" + encodeURIComponent(q) },
+    { name: "مكتبة أهل البيت (ع)", site: "https://ablibrary.net/", note: "نصوص كتبها كاملة", url: (q) => "https://ablibrary.net/search?query=" + encodeURIComponent(q) },
+    { name: "مكتبة العتبة العباسية (الكفيل) الرقمية", site: "https://library.alkafeel.net/dic/", note: "الكتب والأطاريح الجامعية والبحوث والمجلات (أكثر من ٣٠٠ ألف مصدر)", url: (q) => "https://library.alkafeel.net/dic/search/?t=all&q=" + encodeURIComponent(q) },
+    { name: "مكتبة صحراء النجف", site: "https://najafdesertlibrary.com/", note: "نصوص كتب الحديث والتفسير والفقه، مع البحث داخل المحتوى", url: (q) => "https://najafdesertlibrary.com/search?q=" + encodeURIComponent(q) },
+    { name: "مكتبة نور الرقمية (noorlib)", site: "https://noorlib.ir/ar", note: "نصوص أكثر من مئة ألف كتاب عربي وفارسي", url: (q) => "https://noorlib.ir/ar/search?q=" + encodeURIComponent(q) },
+    { name: "المكتبة الشاملة", site: "https://shamela.ws/", note: "نصوص كتب التراث الإسلامي العام", url: (q) => "https://shamela.ws/search?q=" + encodeURIComponent(q) },
+    { name: "مجلات نور التخصصية (noormags)", site: "https://www.noormags.ir/view/ar/default", note: "مقالات المجلات العلمية والحوزوية ونصوصها", url: (q) => "https://www.noormags.ir/view/ar/search?q=" + encodeURIComponent(q) },
+    { name: "موقع التراث الرقمي (العتبة العباسية)", site: "https://bibliography.mk.iq/", note: "مكتبة التراث وما حُقّق منه وبنك البحوث وفهارس المخطوطات", url: (q) => "https://bibliography.mk.iq/search?query=" + encodeURIComponent(q) + "&search_scope=all" },
+    { name: "مكتبة الروضة الحيدرية", site: "https://www.haydarya.com/", note: "مكتبة العتبة العلوية: الكتب والرسائل الجامعية والمكتبة المختصة بأمير المؤمنين (ع)", url: (q) => "https://www.haydarya.com/?fid=1&search=" + encodeURIComponent(q) + "&search_type=2" },
+    { name: "المكتبة الوقفية", site: "https://waqfeya.net/", note: "عناوين الكتب المصورة ومؤلفوها", url: (q) => "https://waqfeya.net/search?q=" + encodeURIComponent(q) }
+  ];
+  /* Libraries to open and browse at their own site (no search that the app can open). */
+  const SITES = [
+    { name: "مكتبة العتبة الحسينية المقدسة", note: "قسم الشؤون الفكرية والثقافية ومكتبته وإصداراته", url: "https://icad.iq/about-imam-hussain-library" },
+    { name: "مكتبة ودار مخطوطات العتبة العباسية", note: "المكتبة وخدماتها ومخطوطاتها", url: "https://alkafeel.net/library/" },
+    { name: "المكتبة الإلكترونية للعتبة الكاظمية", note: "كتب العتبة وبحوثها ومجلاتها", url: "https://www.aljawadain.org/library/main" },
+    { name: "Al-Islam.org", note: "مكتبة أهل البيت الرقمية بالإنجليزية ولغات أخرى (البحث فيها يحتاج حساباً)", url: "https://www.al-islam.org/" },
+    { name: "شبكة مشكاة الإسلامية", note: "مكتبة مشكاة (قد لا يفتح الموقع أحياناً)", url: "https://www.almeshkat.net/" }
   ];
   /* Telegram channels (lessons, libraries) whose description holds every word asked for. */
   function searchLessons(q) {
@@ -128,5 +148,5 @@
   const sourceUrl = (s) => URLS[s.src] ? URLS[s.src](s.id) : "#";
   const textSearchUrl = (q, eshiaId) => "https://ar.lib.eshia.ir/search/" + (eshiaId ? eshiaId + "/" : "") + encodeURIComponent(String(q).trim());
 
-  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, searchLessons, lessonsFor, sourceUrl, textSearchUrl, TEXT_ENGINES, get: (k) => S.byKey.get(k) };
+  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, searchLessons, lessonsFor, sourceUrl, textSearchUrl, TEXT_ENGINES, SITES, get: (k) => S.byKey.get(k) };
 })(self);

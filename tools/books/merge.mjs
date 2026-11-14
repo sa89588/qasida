@@ -61,7 +61,7 @@ export function merge(rows) {
     for (const x of at) e.at.add(x);
     e.rows.push(r);
   }
-  const ORDER = { e: 0, a: 1, f: 2, s: 3, h: 4, i: 5, k: 6, t: 7 };
+  const ORDER = { e: 0, a: 1, n: 2, f: 3, s: 4, m: 5, h: 6, i: 7, k: 8, j: 9, u: 10, t: 11 };
   return entries.map((e) => {
     const rs = e.rows.sort((a, b) => ORDER[a.src] - ORDER[b.src]);
     const best = rs.filter((r) => r.lang === "ar").sort((a, b) => a.title.length - b.title.length)[0] || rs[0];   // the plainest title

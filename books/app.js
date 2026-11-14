@@ -29,6 +29,8 @@
   const SRC = { e: { short: "مدرسة الفقاهة", act: "اقرأه", cls: "e" }, a: { short: "مكتبة أهل البيت", act: "اقرأه", cls: "e" },
     f: { short: "شبكة الفكر", act: "حمّل PDF", cls: "f" }, s: { short: "كتب شيعية", act: "حمّل PDF", cls: "s" },
     h: { short: "الإمامين الحسنين", act: "اقرأه", cls: "f" }, i: { short: "العتبة الحسينية", act: "حمّل PDF", cls: "s" }, k: { short: "مكتبة الإمام الكاظم", act: "اقرأه", cls: "f" },
+    n: { short: "صحراء النجف", act: "اقرأه", cls: "e" }, m: { short: "التراث الرقمي", act: "افتحه (PDF)", cls: "s" }, u: { short: "إحياء التراث", act: "اقرأه أو حمّله", cls: "s" },
+    j: { short: "العتبة الكاظمية", act: "اقرأه", cls: "f" },
     t: { short: "تلكرام", act: "افتح في التلكرام", cls: "t" } };
   const KINDS = { r: "بحوث ودراسات", j: "المجلات", b: "الكتب" };
   const srcOf = (k) => SRC[k] || { short: k, act: "افتحه", cls: "" };
@@ -44,6 +46,7 @@
     if (p.get("c")) return fieldView(+p.get("c"), +(p.get("n") || 60));
     if (p.get("k")) return kindView(p.get("k"), +(p.get("n") || 60));
     if (p.has("l")) return lessonsView(p.get("l") || "", +(p.get("n") || 80));
+    if (p.has("m")) return librariesView();
     $("#q").value = "";
     home();
   }
@@ -63,13 +66,14 @@
     const sections = el("div", { class: "cats" },
       el("a", { class: "cat sect", href: "#k=r" }, el("b", { text: "بحوث ودراسات" }), el("span", { text: count(kinds.r, W_BOOK) + " · ومعها محركات الأطاريح والبحوث" })),
       el("a", { class: "cat sect", href: "#k=j" }, el("b", { text: "المجلات" }), el("span", { text: num(kinds.j) + " عدداً ومجلة" })),
-      el("a", { class: "cat sect", href: "#l=" }, el("b", { text: "دروس وقنوات التلكرام" }), el("span", { text: num(S.lessons.length) + " قناة · " + num(tgFiles) + " ملفاً" })));
+      el("a", { class: "cat sect", href: "#l=" }, el("b", { text: "دروس وقنوات التلكرام" }), el("span", { text: num(S.lessons.length) + " قناة · " + num(tgFiles) + " ملفاً" })),
+      el("a", { class: "cat sect", href: "#m=" }, el("b", { text: "كل المكتبات" }), el("span", { text: num(Object.values(S.sources).filter((x) => x.count).length + B.TEXT_ENGINES.length + B.SITES.length + S.libraries.length) + " مكتبة وموقعاً وقناة" })));
     v.append(el("div", { class: "card" }, el("h2", { class: "sec", text: "الأقسام" }), sections),
       el("div", { class: "card" }, el("h2", { class: "sec", text: "تصفّح حسب العلم" }), grid, langs),
       el("div", { class: "card tips" }, el("h2", { class: "sec", text: "كيف تبحث" }),
         el("ul", {},
           el("li", {}, "اسم كتاب أو مؤلف أو موضوع: ", el("i", { text: "جواهر الكلام" }), " · ", el("i", { text: "الشيخ المفيد" }), " · ", el("i", { text: "المواريث" })),
-          el("li", {}, "وللبحث داخل نصوص الكتب: اكتب الكلمات ثم «ابحث داخل نصوص الكتب»، فيبحث فيها محرك مكتبة مدرسة الفقاهة."),
+          el("li", {}, "وللبحث داخل نصوص الكتب: اكتب الكلمات، ثم اختر من محركات المكتبات (مدرسة الفقاهة، أهل البيت، الكفيل، صحراء النجف، نور، الشاملة…)."),
           el("li", {}, "كل كتاب يظهر مرة واحدة ومعه كل المكتبات التي فيها: للقراءة أو لتنزيل ملفه."))));
     paintStats();
   }
@@ -128,6 +132,26 @@
       badges(b), b.kind === "r" ? el("span", { class: "kind", text: "بحث" }) : null));
   }
 
+  /* ---------- every library: the catalogue's, the search engines, the sites, Telegram ---------- */
+  function siteRow(name, note, url, act) {
+    return el("li", {}, el("a", { class: "brow", href: url, target: "_blank", rel: "noopener" },
+      el("b", { text: name }), note ? el("span", { class: "muted small", text: note }) : null,
+      el("span", { class: "srcs" }, el("span", { class: "src " + (act === "t" ? "t" : "f"), text: act === "t" ? "افتح في التلكرام ↗" : "افتح الموقع ↗" }))));
+  }
+  function librariesView() {
+    const v = $("#view"); v.replaceChildren(); status("");
+    const inCat = el("ul", { class: "books" }, Object.entries(S.sources).filter(([k, x]) => k !== "t" && x.count && x.url).map(([, x]) => siteRow(x.name, count(x.count, W_BOOK) + " في الفهرس", x.url)));
+    const engines = el("ul", { class: "books" }, B.TEXT_ENGINES.map((e) => siteRow(e.name, e.note, e.site)));
+    const sites = el("ul", { class: "books" }, B.SITES.map((x) => siteRow(x.name, x.note, x.url)));
+    const tg = el("ul", { class: "books" }, S.libraries.map((l) => siteRow(l.t, [l.x, l.n ? (/^\d+$/.test(l.n) ? num(+l.n) : l.n) + " مشترك" : "", "@" + l.u].filter(Boolean).join(" · "), "https://t.me/" + l.u, "t")));
+    v.append(el("a", { class: "back", href: "#" }, "→ الرئيسية"), el("h2", { class: "title", text: "كل المكتبات" }),
+      el("p", { class: "muted small", text: "الكتب تبقى في مكتباتها: يفتح التطبيق الكتاب في موقعه أو في التلكرام، ولا يحفظ نسخاً منها." }),
+      el("section", { class: "card" }, el("h2", { class: "sec", text: "مكتبات الفهرس الموحّد" }), inCat),
+      el("section", { class: "card" }, el("h2", { class: "sec", text: "محركات البحث في النصوص والعناوين" }), el("p", { class: "muted small", text: "اكتب ما تبحث عنه في البحث فوق، وتظهر لك هذه المحركات لتفتح نتائج كل مكتبة عندها." }), engines),
+      el("section", { class: "card" }, el("h2", { class: "sec", text: "مواقع مكتبات أخرى" }), sites),
+      S.libraries.length ? el("section", { class: "card" }, el("h2", { class: "sec", text: "مكتبات على التلكرام" }), tg) : null);
+  }
+
   /* ---------- a book ---------- */
   function bookView(key) {
     const v = $("#view"); v.replaceChildren(); status("");
@@ -179,14 +203,17 @@
   }
 
   /* ---------- search ---------- */
+  function engineRow(e, q, primary) {
+    return el("li", {}, el("a", { class: "btn" + (primary ? " primary" : ""), href: e.url(q), target: "_blank", rel: "noopener" }, e.name + " ↗"), el("span", { class: "muted small", text: e.note }));
+  }
   function results(q) {
     const v = $("#view"); v.replaceChildren();
     const found = B.search(q, shown);
     v.append(el("section", { class: "card inside-all" },
       el("h2", { class: "sec", text: "ابحث عن «" + q.slice(0, 40) + "» داخل نصوص الكتب" }),
-      el("ul", { class: "engines" }, B.TEXT_ENGINES.map((e, i) => el("li", {},
-        el("a", { class: "btn" + (i === 0 ? " primary" : ""), href: e.url(q), target: "_blank", rel: "noopener" }, e.name + " ↗"),
-        el("span", { class: "muted small", text: e.note })))),
+      el("ul", { class: "engines" }, B.TEXT_ENGINES.slice(0, 4).map((e, i) => engineRow(e, q, i === 0))),
+      el("details", { class: "more-engines" }, el("summary", {}, "محركات مكتبات أخرى (" + num(B.TEXT_ENGINES.length - 4) + ")"),
+        el("ul", { class: "engines" }, B.TEXT_ENGINES.slice(4).map((e) => engineRow(e, q, false)))),
       el("p", { class: "muted small", text: "كل مكتبة تبحث بمحركها وتعرض النتائج عندها." })));
     const ls = B.searchLessons(q).sort((a, b) => (+b.n || 0) - (+a.n || 0));
     if (ls.length) {

@@ -2,7 +2,7 @@
 import fs from "node:fs"; import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
-import { splitShiabooksTitle, parseShiabooksField, parseAblibraryList, parseHassanainList, parseHusseiniList } from "./sources.mjs";
+import { splitShiabooksTitle, parseShiabooksField, parseAblibraryList, parseHassanainList, parseHusseiniList, parseNajafSitemaps, parseMaarefList, parseTurathList, parseJawadainList } from "./sources.mjs";
 import { merge, titleKey, fieldOf, fieldOfTitle, FIELDS } from "./merge.mjs";
 import { parsePreview, lessonLinks, fileTitle, parseChannelPage } from "./telegram.mjs";
 const require = createRequire(import.meta.url); const W = require("../../books/words.js");
@@ -23,6 +23,14 @@ assert.deepEqual(parseShiabooksField('<h2><a href="library.php?id=15804">الب�
 assert.deepEqual(parseAblibraryList('<a class="x" href="/book_content/b/10316/1"><h2 class="t">أجوبة السائلين</h2><p class="m">المؤلف: الشيخ فاضل اللنكراني<!-- --> · <!-- -->الناشر: قم<!-- --> · <!-- -->160<!-- --> <!-- -->صفحة</p></a>').map((r) => [r.id, r.title, r.author, r.pages]), [[10316, "أجوبة السائلين", "الشيخ فاضل اللنكراني", 160]]);
 assert.deepEqual(parseHassanainList('<div class="item book" itemscope><h2 class="contentheading" itemprop="title"><a href="?com=book&amp;id=653">الروضة من الكافي</a> - الجزء 8</h2><span class="creator" itemprop="author">الكليني</span><a href="?com=book&amp;view=category&amp;id=110"><b>متون حديثية</b></a>').map((r) => [r.id, r.title, r.label, r.author, r.field]), [[653, "الروضة من الكافي", "الروضة من الكافي - الجزء 8", "الكليني", "متون حديثية"]]);
 assert.equal(parseHusseiniList('<a href="https://publication.imamhussain.org/post/2943">\n<h5 class="text-center">أساليب السرد</h5></a><a href="x"><h6 class="t">مؤسسة وارث الأنبياء</h6></a>')[0].id, 2943);
+// مكتبة صحراء النجف، موقع التراث الرقمي، الهيأة العليا لإحياء التراث، العتبة الكاظمية
+const nd = parseNajafSitemaps('<loc>https://najafdesertlibrary.com/book/%D9%83%D8%AA%D8%A7%D8%A8-%D8%A7%D9%84%D9%82%D8%B6%D8%A7%D8%A1</loc><loc>https://najafdesertlibrary.com/book/كتاب-القضاء-4</loc><loc>https://najafdesertlibrary.com/book/الكافي</loc>', '<loc>https://najafdesertlibrary.com/book/الكافي/v/8</loc>');
+assert.deepEqual(nd.map((r) => [r.id, r.title, r.label, r.vols]), [["كتاب-القضاء", "كتاب القضاء", "كتاب القضاء", 0], ["كتاب-القضاء-4", "كتاب القضاء", "كتاب القضاء (نسخة 4)", 0], ["الكافي", "الكافي", "الكافي", 8]]);
+const mkHtml = '<div class="" id="content110574"><div class="table-head d-flex w-100 px-3"><h1 style="width: 100px">العنوان : </h1>\n<h1>كتاب الخلاف ج1-6</h1></div><div><p style="width: 100px">المؤلف : </p>\n<p style="">الشيخ الطوسي</p></div><div><p style="width: 100px">المحقق : </p><p style="">بلا</p></div><div><p style="width: 100px"> عدد الاجزاء : </p><p style="">بلا</p></div></div>';
+assert.deepEqual(parseMaarefList(mkHtml + mkHtml.replace("content110574", "content110574"), 2).map((r) => [r.id, r.title, r.author, r.editor, r.vols, r.field]), [[110574, "كتاب الخلاف ج1-6", "الشيخ الطوسي", "", 6, "ما حقق من التراث"]]);
+assert.deepEqual(parseTurathList('<a href="/book/350" target="_blank" class="book-link"><img src="x.jpg"><h4 class="book-title  text-center" style="x" title="فصل الخطاب">فصل الخطاب</h4></a>').map((r) => [r.id, r.title]), [[350, "فصل الخطاب"]]);
+assert.deepEqual(parseJawadainList("<a class='c-card-book' href='https://www.aljawadain.org/library/books/single?book_id=1492' style=''><h5 class=\"c-card-book__title\"> الامامان </h5><b>التصنيف:</b> <span class='px-1'> السيرة </span><b>المؤلف:</b> <span class='px-1'> آل ياسين </span></a>", "b").map((r) => [r.id, r.title, r.author, r.field]), [["1492", "الامامان", "آل ياسين", "السيرة"]]);
+assert.equal(parseJawadainList("<a class='c-card-research' href='https://www.aljawadain.org/library/researches/single?research_id=142'><h5 class=\"c-card-research__title\"> ضرام الحزن </h5></a>", "r")[0].id, "r142");
 // merging
 assert.equal(titleKey("الكافي- ط الاسلامية"), titleKey("الكافي"));
 assert.equal(titleKey("وسائل الشيعة - ط آل البیت"), titleKey("وسائل الشيعة"));

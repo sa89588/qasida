@@ -17,7 +17,24 @@ export const CHANNELS = [
   { ch: "storebooka", name: "مكتبات", links: true },
   { ch: "fawaedhawza", name: "فوائد حوزوية", files: true },
   { ch: "KutupNahwia", name: "مكتبة كنوز لغوية", files: true },
-  { ch: "Karbala_Center", name: "مركز كربلاء للدراسات والبحوث", files: true }
+  { ch: "Karbala_Center", name: "مركز كربلاء للدراسات والبحوث", files: true },
+  { ch: "kashkool_mb", name: "كشكول حوزوي", links: true, files: true }
+];
+/* Book libraries on Telegram. Most show no posts on the web, so only their page (name, members, description)
+   is read; the app opens them in Telegram. */
+export const LIBRARY_CHANNELS = [
+  { u: "Books_Links", name: "النجف مكتبتي", note: "مكتبة رقمية متعددة الاختصاصات" },
+  { u: "ktoobh", name: "مكتبة الإمامية", note: "كتب شيعية" },
+  { u: "MishrefAqidah", name: "مكتبة العقيدة والمذاهب والأديان", note: "آلاف الكتب العقدية في مكان واحد" },
+  { u: "Alhydry3", name: "كتب السيد كمال الحيدري", note: "" },
+  { u: "kashkool_mb", name: "كشكول حوزوي", note: "فوائد حوزوية متفرقة" },
+  { u: "bhbgcx", name: "الدروس الحوزوية في النجف الأشرف", note: "" },
+  { u: "storebooka", name: "مكتبات", note: "دليل قنوات المكتبات" },
+  { u: "fawaedhawza", name: "فوائد حوزوية", note: "" },
+  { u: "KutupNahwia", name: "مكتبة كنوز لغوية", note: "" },
+  { u: "Mak_altalib", name: "مكتبة الطالب الحوزوي", note: "" },
+  { u: "alfekerpdf", name: "كتب مكتبة الفكر", note: "" },
+  { u: "Karbala_Center", name: "مركز كربلاء للدراسات والبحوث", note: "" }
 ];
 const SKIP_USER = /^(s|share|joinchat|addlist|iv|proxy|socks|c|addstickers|setlanguage|boost)$|bot$/i;
 
@@ -131,6 +148,13 @@ export async function telegram(get, log, state, budget) {
       st.bottom = low;
     }
     if (st.bottom <= 1) st.done = true;
+  }
+  // The book libraries' own pages: name, members, description (every run; a dozen requests).
+  state.libs = state.libs || {};
+  for (const c of LIBRARY_CHANNELS) {
+    const h = await get("https://t.me/" + c.u);
+    const page = h ? parseChannelPage(h) : null;
+    if (page) state.libs[c.u] = { t: page.title.slice(0, 100), n: page.members, x: page.about.slice(0, 200) };
   }
   // Each listed channel's own name and size, from its public page (t.me/<username>), a part each run.
   let resolved = 0;

@@ -8,9 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
-import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim } from "./sources.mjs";
+import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim, najafDesert, maaref, turath, jawadain } from "./sources.mjs";
 import { merge, FIELDS } from "./merge.mjs";
-import { telegram, CHANNELS } from "./telegram.mjs";
+import { telegram, CHANNELS, LIBRARY_CHANNELS } from "./telegram.mjs";
 
 const require = createRequire(import.meta.url);
 const W = require("../../books/words.js");
@@ -100,6 +100,10 @@ const LIBRARIES = {
   h: { name: "شبكة الإمامين الحسنين", url: "https://www.alhassanain.org/arabic/?com=book" },
   i: { name: "إصدارات العتبة الحسينية", url: "https://publication.imamhussain.org/books" },
   k: { name: "مكتبة الإمام الكاظم (ع)", url: "https://www.imamkadhim.com/" },
+  n: { name: "مكتبة صحراء النجف", url: "https://najafdesertlibrary.com/" },
+  m: { name: "مكتبة ودار مخطوطات العتبة العباسية (موقع التراث الرقمي)", url: "https://bibliography.mk.iq/" },
+  u: { name: "الهيأة العليا لإحياء التراث (العتبة العباسية)", url: "https://turath.alkafeel.net/books" },
+  j: { name: "المكتبة الإلكترونية للعتبة الكاظمية", url: "https://www.aljawadain.org/library/main" },
   t: { name: "قنوات التلكرام", url: "https://t.me/" }
 };
 const ESHIA_FIELD = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 10, 10, 11, 13, 12];   // eshia's fields → ours
@@ -118,11 +122,13 @@ function write() {
   // Lesson and library channels on Telegram: [username, what it is, the channel that listed it]
   const lessons = Object.values(tg.lessons || {}).filter((l) => !l.dead && l.kind !== "user")
     .map((l) => [l.u, l.d, l.ch, l.t || "", l.n || "", l.x || ""]).sort((a, b) => (a[3] || a[1]).localeCompare(b[3] || b[1], "ar"));
+  // Book libraries on Telegram (many show no posts on the web: the app opens them in Telegram).
+  const libraries = LIBRARY_CHANNELS.map((c) => { const p = (tg.libs || {})[c.u] || {}; return [c.u, p.t || c.name, p.n || "", p.x || c.note || "", c.name]; });
   const counts = {}; for (const r of rows) counts[r.src] = (counts[r.src] || 0) + 1;
   fs.writeFileSync(P("catalog.json"), JSON.stringify({ format: 2, updated: new Date().toISOString(), fields: FIELDS,
     sources: Object.fromEntries(Object.entries(LIBRARIES).map(([k, v]) => [k, { ...v, count: counts[k] || 0 }])),
     channels: CHANNELS.map((c) => [c.ch, c.name]),
-    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes,label]]", "kind b|r|j"], books, lessons }));
+    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes,label]]", "kind b|r|j"], books, lessons, libraries }));
   // The page-text index of earlier versions is no longer used.
   fs.rmSync(P("seg"), { recursive: true, force: true }); fs.rmSync(P("index.json"), { force: true });
   fs.writeFileSync(P("state.json"), JSON.stringify(state));
@@ -133,10 +139,14 @@ function write() {
 async function main() {
   await eshiaCatalogue();
   // Each library's whole list, in parallel (each host is asked politely on its own); a failed read keeps the last list.
-  const LIBS = { f: [alfeker, 1000], s: [shiabooks, 1000], a: [ablibrary, 1000], h: [hassanain, 100], i: [husseini, 30], k: [kadhim, 20] };
-  await Promise.all(Object.entries(LIBS).map(async ([k, [fn, min]]) => {
+  // [reader, fewest books for a good read, days between reads] — the big page-by-page lists weekly.
+  const LIBS = { f: [alfeker, 1000, 1], s: [shiabooks, 1000, 1], a: [ablibrary, 1000, 1], h: [hassanain, 100, 1], i: [husseini, 30, 1], k: [kadhim, 20, 1],
+    n: [najafDesert, 1000, 1], m: [maaref, 2000, 7], u: [turath, 30, 7], j: [jawadain, 300, 7] };
+  state.sourcesAt = state.sourcesAt || {};
+  await Promise.all(Object.entries(LIBS).map(async ([k, [fn, min, days]]) => {
+    if (state.sources[k] && Date.now() - (state.sourcesAt[k] || 0) < days * 864e5 - 3 * 3600e3) return;
     const rows = await fn(get, log).catch((e) => { log(k, "failed", e.message); return null; });
-    if (rows && rows.length >= min) state.sources[k] = rows; else log(k, "kept the previous list", rows ? rows.length : 0);
+    if (rows && rows.length >= min) { state.sources[k] = rows; state.sourcesAt[k] = Date.now(); } else log(k, "kept the previous list", rows ? rows.length : 0);
   }));
   // Telegram channels (a part each run, then only what is new).
   state.tg = state.tg || {};

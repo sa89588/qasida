@@ -183,3 +183,107 @@ export async function kadhim(get, log) {
   log && log("imamkadhim books", out.length);
   return out;
 }
+
+/* ---------- مكتبة صحراء النجف (najafdesertlibrary.com): its sitemaps list every book and volume ----------
+   Its pages are read in a browser only; the sitemaps give the book's address, whose last part is its title. */
+const ND = "https://najafdesertlibrary.com/";
+const locs = (xml) => [...String(xml || "").matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => { try { return decodeURIComponent(m[1].trim()); } catch { return m[1].trim(); } });
+export function parseNajafSitemaps(booksXml, volumesXml) {
+  const slugs = locs(booksXml).map((u) => (u.match(/\/book\/([^/]+)$/) || [])[1]).filter(Boolean);
+  const have = new Set(slugs), vols = new Map();
+  for (const u of locs(volumesXml)) { const m = u.match(/\/book\/([^/]+)\/v\/(\d+)/); if (m) vols.set(m[1], Math.max(vols.get(m[1]) || 0, +m[2])); }
+  return slugs.map((slug) => {
+    // «كتاب-القضاء-4» is the fourth book of that name when «كتاب-القضاء» is there too.
+    const dup = slug.match(/^(.+)-(\d+)$/);
+    const base = dup && have.has(dup[1]) ? dup[1] : slug;
+    const title = base.replace(/-+/g, " ").trim();
+    return { src: "n", id: slug, title, label: dup && base !== slug ? title + " (نسخة " + dup[2] + ")" : title, author: "", field: "", topics: "", lang: "ar", vols: vols.get(slug) || 0 };
+  });
+}
+export async function najafDesert(get, log) {
+  const books = await get(ND + "sitemaps/sitemap-books.xml");
+  if (!books) return [];
+  const out = parseNajafSitemaps(books, await get(ND + "sitemaps/sitemap-volume-hubs.xml"));
+  log && log("najafdesert books", out.length);
+  return out;
+}
+
+/* ---------- موقع التراث الرقمي (bibliography.mk.iq) — مكتبة ودار مخطوطات العتبة العباسية ---------- */
+const MK = "https://bibliography.mk.iq/";
+const MK_SECTIONS = { 1: "مكتبة التراث", 2: "ما حقق من التراث", 3: "بنك البحوث", 4: "فهارس المخطوطات" };
+const none = (s) => (/^(بلا|لا يوجد|-+)?$/.test(s.trim()) ? "" : s.trim());
+export function parseMaarefList(html, section) {
+  const out = [], seen = new Set();
+  for (const part of String(html).split(/id="content(?=\d)/).slice(1)) {
+    const id = +(part.match(/^(\d+)/) || [])[1];
+    if (!id || seen.has(id)) continue;
+    const title = plain((part.match(/العنوان\s*:\s*<\/h1>\s*<h1>([\s\S]*?)<\/h1>/) || [])[1] || "");
+    if (!title) continue;
+    seen.add(id);
+    const fact = (name) => none(plain((part.match(new RegExp(name + "\\s*:\\s*<\\/p>\\s*<p[^>]*>([\\s\\S]*?)<\\/p>")) || [])[1] || ""));
+    const parts = +(fact("عدد الاجزاء").match(/\d+/) || [0])[0];
+    const range = title.match(/ج\s*1\s*[-–]\s*(\d+)/);
+    out.push({ src: "m", id, title, label: title, author: fact("المؤلف"), editor: fact("المحقق"), field: MK_SECTIONS[section] || "", topics: "",
+      vols: parts || (range ? +range[1] : 0), lang: /[پچژگ]/.test(title) ? "fa" : "ar" });
+  }
+  return out;
+}
+export async function maaref(get, log) {
+  const out = [], seen = new Set();
+  for (const section of Object.keys(MK_SECTIONS)) {
+    let n = 0;
+    for (let page = 1; page < 2000; page++) {
+      const h = await get(`${MK}section/${section}` + (page > 1 ? "?page=" + page : ""));
+      const rows = h ? parseMaarefList(h, section).filter((r) => !seen.has(r.id)) : [];
+      if (!rows.length) break;
+      for (const r of rows) { seen.add(r.id); out.push(r); n++; }
+    }
+    log && log("maaref", MK_SECTIONS[section], n);
+  }
+  return out;
+}
+
+/* ---------- الهيأة العليا لإحياء التراث (turath.alkafeel.net) — العتبة العباسية ---------- */
+export function parseTurathList(html) {
+  return [...String(html).matchAll(/href="\/book\/(\d+)"[^>]*>[\s\S]*?class="book-title[^"]*"[^>]*title="([^"]*)"/g)]
+    .map((m) => { const title = unent(m[2]).trim(); return { src: "u", id: +m[1], title, label: title, author: "", field: "", topics: "", lang: "ar" }; });
+}
+export async function turath(get, log) {
+  const out = [], seen = new Set();
+  for (let page = 1; page < 200; page++) {
+    const h = await get("https://turath.alkafeel.net/books" + (page > 1 ? "?page=" + page : ""));
+    const rows = h ? parseTurathList(h).filter((r) => !seen.has(r.id)) : [];
+    if (!rows.length) break;
+    for (const r of rows) { seen.add(r.id); out.push(r); }
+  }
+  log && log("turath books", out.length);
+  return out;
+}
+
+/* ---------- المكتبة الإلكترونية للعتبة الكاظمية (aljawadain.org): its books and its studies ---------- */
+export function parseJawadainList(html, kind) {
+  const out = [];
+  const re = kind === "r" ? /researches\/single\?research_id=(\d+)'/ : /books\/single\?book_id=(\d+)'/;
+  for (const part of String(html).split(/<a class='c-card-(?:book|research)'/).slice(1)) {
+    const m = part.match(re);
+    if (!m) continue;
+    const title = plain((part.match(/__title">([\s\S]*?)<\/h5>/) || [])[1] || "");
+    if (!title) continue;
+    const fact = (name) => plain((part.match(new RegExp("<b>" + name + ":<\\/b>\\s*<span[^>]*>([\\s\\S]*?)<\\/span>")) || [])[1] || "");
+    out.push({ src: "j", id: (kind === "r" ? "r" : "") + m[1], title, label: title, author: fact("المؤلف"), field: kind === "r" ? "بحوث" : fact("التصنيف"), topics: "", lang: "ar" });
+  }
+  return out;
+}
+export async function jawadain(get, log) {
+  const out = [], seen = new Set();
+  for (const [kind, path] of [["b", "books/all-books"], ["r", "researches/all-researches"]]) {
+    for (let page = 1; page < 400; page++) {
+      const h = await get("https://www.aljawadain.org/library/" + path + (page > 1 ? "?page=" + page : ""));
+      const rows = h ? parseJawadainList(h, kind).filter((r) => !seen.has(r.id)) : [];
+      if (!rows.length) break;
+      for (const r of rows) { seen.add(r.id); out.push(r); }
+    }
+  }
+  log && log("aljawadain books and studies", out.length);
+  return out;
+}

@@ -109,3 +109,6 @@ main>*{min-width:0}
 .cat.sect{background:color-mix(in srgb,var(--accent) 7%,var(--surface2))}
 .kind{align-self:flex-start;font-size:.72rem;line-height:1.7;padding:0 8px;border-radius:99px;background:color-mix(in srgb,var(--brass) 15%,transparent);color:var(--brass)}
 .lessons{display:grid;gap:8px;margin-top:6px}
+.more-engines{margin-top:10px}
+.more-engines summary{cursor:pointer;color:var(--accent,#0b6b5c);font-weight:600;padding:6px 0}
+.more-engines .engines{margin-top:8px}
