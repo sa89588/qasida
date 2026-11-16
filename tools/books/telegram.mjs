@@ -18,7 +18,23 @@ export const CHANNELS = [
   { ch: "fawaedhawza", name: "فوائد حوزوية", files: true },
   { ch: "KutupNahwia", name: "مكتبة كنوز لغوية", files: true },
   { ch: "Karbala_Center", name: "مركز كربلاء للدراسات والبحوث", files: true },
-  { ch: "kashkool_mb", name: "كشكول حوزوي", links: true, files: true }
+  { ch: "kashkool_mb", name: "كشكول حوزوي", links: true, files: true },
+  // Book channels whose posts show on the web: their files join the catalogue.
+  { ch: "shiapdf", name: "Shiabooks — كتب شيعية", files: true },
+  { ch: "aqaed_com", name: "مركز الأبحاث العقائدية", files: true },
+  { ch: "ahmad1971a", name: "التراث والتحقيق بين يديك", files: true },
+  { ch: "karblabooks", name: "مخطوطات ومطبوعات كربلائية", files: true },
+  { ch: "alasefi", name: "تراث العلامة الآصفي", files: true },
+  { ch: "Alkhoei_lib", name: "مكتبة الإمام الخوئي العامة", files: true },
+  { ch: "turathKarbala", name: "مركز تراث كربلاء", files: true },
+  { ch: "hhaa1980", name: "المكتبة العقائدية", files: true },
+  { ch: "nosakh_shii", name: "ميراث خطي شيعه", files: true },
+  { ch: "Na8ed_imami", name: "الناقد الإمامي", files: true },
+  { ch: "tathkerah", name: "المعرفة الدينية", files: true },
+  { ch: "tashihat", name: "مخطوطات محقّقة", files: true },
+  { ch: "Mutatallarab", name: "فنّ الإعراب", files: true },
+  { ch: "aa13am", name: "الموسوعة الفلسفية — السيد كمال الحيدري", files: true },
+  { ch: "Alhydry19", name: "الموسوعة العرفانية — السيد كمال الحيدري", files: true }
 ];
 /* Book libraries on Telegram. Most show no posts on the web, so only their page (name, members, description)
    is read; the app opens them in Telegram. */
@@ -100,6 +116,7 @@ export function parseChannelPage(html) {
 }
 
 /* Read the channels (newest first, then further back each run). state: { channels: {ch: {top, bottom, done}}, files: [], lessons: {} } */
+export const MEDIA = /\.(mp3|m4a|ogg|oga|opus|wav|aac|amr|wma|flac|mp4|m4v|mkv|avi|mov|3gp|webm|apk|exe)\s*$/i;
 export async function telegram(get, log, state, budget) {
   state.channels = state.channels || {}; state.files = state.files || []; state.lessons = state.lessons || {};
   const haveFile = new Set(state.files.map((f) => f.ch + "/" + f.post));
@@ -107,7 +124,7 @@ export async function telegram(get, log, state, budget) {
     for (const p of posts) {
       if (chan.files) for (const d of p.docs) {
         const key = p.ch + "/" + p.id;
-        if (haveFile.has(key)) continue;
+        if (haveFile.has(key) || MEDIA.test(d.title)) continue;     // recordings sent as files are not books
         haveFile.add(key);
         const title = fileTitle(d.title, p.text);
         if ((title.match(/[\u0600-\u06ff]/g) || []).length >= 4) state.files.push({ ch: p.ch, post: p.id, title, size: d.size, file: d.title.slice(0, 120) });

@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import * as E from "./eshia.mjs";
 import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim, najafDesert, maaref, turath, jawadain } from "./sources.mjs";
 import { merge, FIELDS } from "./merge.mjs";
-import { telegram, CHANNELS, LIBRARY_CHANNELS } from "./telegram.mjs";
+import { telegram, CHANNELS, LIBRARY_CHANNELS, MEDIA } from "./telegram.mjs";
 
 const require = createRequire(import.meta.url);
 const W = require("../../books/words.js");
@@ -114,7 +114,7 @@ function eshiaRows() {
 }
 function write() {
   const tg = state.tg || { files: [], lessons: {} };
-  const tgRows = tg.files.map((f) => ({ src: "t", id: f.ch + "/" + f.post, title: f.title, label: [f.title !== f.file.replace(/\.[a-z0-9]+$/i, "").replace(/_/g, " ") ? f.file : "", f.size].filter(Boolean).join(" · ") || f.title,
+  const tgRows = tg.files.filter((f) => !MEDIA.test(f.file)).map((f) => ({ src: "t", id: f.ch + "/" + f.post, title: f.title, label: [f.title !== f.file.replace(/\.[a-z0-9]+$/i, "").replace(/_/g, " ") ? f.file : "", f.size].filter(Boolean).join(" · ") || f.title,
     author: "", field: "", topics: "", paper: f.ch === "Karbala_Center", lang: /[پچژگ]|[یک]/.test(f.title) && !/[ي]/.test(f.title) ? "fa" : "ar" }));
   const rows = [...eshiaRows(), ...Object.values(state.sources).flat(), ...tgRows];
   const entries = merge(rows);
