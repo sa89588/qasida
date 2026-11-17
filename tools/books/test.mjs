@@ -31,6 +31,16 @@ assert.deepEqual(parseMaarefList(mkHtml + mkHtml.replace("content110574", "conte
 assert.deepEqual(parseTurathList('<a href="/book/350" target="_blank" class="book-link"><img src="x.jpg"><h4 class="book-title  text-center" style="x" title="فصل الخطاب">فصل الخطاب</h4></a>').map((r) => [r.id, r.title]), [[350, "فصل الخطاب"]]);
 assert.deepEqual(parseJawadainList("<a class='c-card-book' href='https://www.aljawadain.org/library/books/single?book_id=1492' style=''><h5 class=\"c-card-book__title\"> الامامان </h5><b>التصنيف:</b> <span class='px-1'> السيرة </span><b>المؤلف:</b> <span class='px-1'> آل ياسين </span></a>", "b").map((r) => [r.id, r.title, r.author, r.field]), [["1492", "الامامان", "آل ياسين", "السيرة"]]);
 assert.equal(parseJawadainList("<a class='c-card-research' href='https://www.aljawadain.org/library/researches/single?research_id=142'><h5 class=\"c-card-research__title\"> ضرام الحزن </h5></a>", "r")[0].id, "r142");
+// lesson series: «مدرسة الفقاهة», YouTube
+import("./lessons.mjs").then(({ parseEshiaHub, parseEshiaCourse, playlistIds, parseYoutubePlaylist, stageOf }) => {
+  const hub = parseEshiaHub('<section>\n<img src="x.jpg">\n<span>آیة‌الله الشيخ بشير النجفي</span>\n<div>\n<a href="Bashir_Najafi/Feqh/">بحث الفقه</a>\n<a href="Bashir_Najafi/osool/">بحث الأصول</a>\n</div>\n</section><div class="linkbox linkboxmashhad"><div class="linkboxheader">کتاب المکاسب</div><ul><li><a href="/feqh/archive/sath3/Makaseb1/">قسم الأول</a></li></ul></div>', "/Ar/Feqh/Archive/");
+  assert.deepEqual(hub.map((c) => [c.teacher, c.course, c.path]), [["آیة‌الله الشيخ بشير النجفي", "بحث الفقه", "/Ar/Feqh/Archive/Bashir_Najafi/Feqh/"], ["آیة‌الله الشيخ بشير النجفي", "بحث الأصول", "/Ar/Feqh/Archive/Bashir_Najafi/osool/"], ["", "کتاب المکاسب — قسم الأول", "/feqh/archive/sath3/Makaseb1/"]]);
+  const course = parseEshiaCourse('<div class="onvanedoroos">\nبحث الفقه آیة‌الله الشيخ محمداسحاق الفیاض\n</div><div id="link-teacher"><div> <p>مبحث</p><a href="/Feqh/report/asatid/faiyaz">العام</a></div><div>\n<p>کتاب الخمس: قسمة الخمس<br>کتاب الحج: وجوب الحج</p>\n<a href="/Ar/Feqh/Archive/faiyaz/Feqh/40_41">40-41</a>\n</div></main>');
+  assert.deepEqual(course, { title: "بحث الفقه آیة‌الله الشيخ محمداسحاق الفیاض", years: [["40-41", "کتاب الخمس: قسمة الخمس — کتاب الحج: وجوب الحج", "/Ar/Feqh/Archive/faiyaz/Feqh/40_41"]] });
+  assert.deepEqual(playlistIds('<a href="https://youtube.com/playlist?list=PLHNhFObzjUqUzqNha_0GtV1U5rn_68Qx3&amp;si=Je">x</a> https://www.youtube.com/watch?v=abcdefghijk&list=PLYd8xvt4EArk'), ["PLHNhFObzjUqUzqNha_0GtV1U5rn_68Qx3", "PLYd8xvt4EArk"]);
+  assert.deepEqual(parseYoutubePlaylist('<meta property="og:title" content="درس رجال | آیت الله شبیری زنجانی"><meta name="description" content="مكتمل">"stats":[{"runs":[{"text":"40"},{"text":" videos"}]}"text":{"content":"الناصري"}"videoId":"tHu1qi4VdCo"'), { title: "درس رجال | آیت الله شبیری زنجانی", owner: "الناصري", count: 40, video: "tHu1qi4VdCo", about: "مكتمل" });
+  assert.deepEqual(["شرح المكاسب الدرس 3", "شرح قطر الندى", "بحث الخارج في الأصول", "محاضرة"].map(stageOf), ["سطوح", "مقدمات", "خارج", ""]);
+}).catch((e) => { console.error(e); process.exit(1); });
 // merging
 assert.equal(titleKey("الكافي- ط الاسلامية"), titleKey("الكافي"));
 assert.equal(titleKey("وسائل الشيعة - ط آل البیت"), titleKey("وسائل الشيعة"));

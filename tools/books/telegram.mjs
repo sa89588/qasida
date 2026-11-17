@@ -5,6 +5,7 @@
    - Hawza lesson channels listed by directory channels («قنوات الدروس الحوزوية»…): the channel's username and the
      line that describes it («شرح المكاسب المحرمة | الشيخ …»), so a book's page can show lessons on that book.
    Each channel is read from its newest post back to its first, a part each run; later runs add only new posts. */
+import { playlistIds } from "./lessons.mjs";
 import { plain, unent } from "./eshia.mjs";
 
 export const CHANNELS = [
@@ -68,7 +69,7 @@ export function parsePreview(html, ch) {
     const docs = [...part.matchAll(/tgme_widget_message_document_title[^>]*>([^<]*)<[\s\S]*?tgme_widget_message_document_extra[^>]*>([^<]*)</g)].map((m) => ({ title: unent(m[1]).trim(), size: unent(m[2]).trim() }));
     const tm = part.match(/<div class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/);
     const text = tm ? toText(tm[1]) : "";
-    out.push({ id, ch, text, docs });
+    out.push({ id, ch, text, docs, yt: playlistIds(part) });
   }
   return out;
 }
@@ -120,8 +121,12 @@ export const MEDIA = /\.(mp3|m4a|ogg|oga|opus|wav|aac|amr|wma|flac|mp4|m4v|mkv|a
 export async function telegram(get, log, state, budget) {
   state.channels = state.channels || {}; state.files = state.files || []; state.lessons = state.lessons || {};
   const haveFile = new Set(state.files.map((f) => f.ch + "/" + f.post));
+  state.yt = state.yt || {};
+  // YouTube playlists the channel posts, with the post's opening words (a teacher, a book).
+  const keepYt = (p) => { for (const id of p.yt || []) if (!state.yt[id]) state.yt[id] = tidy(p.text.split("\n").slice(0, 2).join(" — ")).slice(0, 200); };
   const take = (posts, chan) => {
     for (const p of posts) {
+      keepYt(p);
       if (chan.files) for (const d of p.docs) {
         const key = p.ch + "/" + p.id;
         if (haveFile.has(key) || MEDIA.test(d.title)) continue;     // recordings sent as files are not books
@@ -166,6 +171,23 @@ export async function telegram(get, log, state, budget) {
     }
     if (st.bottom <= 1) st.done = true;
   }
+  // Channels read before playlists were kept: once more from the newest post back, for their YouTube links only.
+  state.ytscan = state.ytscan || {};
+  let ytReq = 0;
+  for (const chan of CHANNELS.filter((c) => c.links)) {
+    const sc = state.ytscan[chan.ch] || (state.ytscan[chan.ch] = { bottom: 0, done: false });
+    while (!sc.done && ytReq < 800) {
+      const h = await get(`https://t.me/s/${chan.ch}` + (sc.bottom ? `?before=${sc.bottom}` : "")); ytReq++;
+      const posts = h ? parsePreview(h, chan.ch) : [];
+      if (!posts.length) { sc.done = !!h; break; }
+      for (const p of posts) keepYt(p);
+      const low = Math.min(...posts.map((p) => p.id));
+      if (sc.bottom && low >= sc.bottom) { sc.done = true; break; }
+      sc.bottom = low;
+      if (low <= 1) sc.done = true;
+    }
+  }
+  if (ytReq) log("telegram: read again for YouTube links", ytReq, "pages,", Object.keys(state.yt).length, "playlists");
   // The book libraries' own pages: name, members, description (every run; a dozen requests).
   state.libs = state.libs || {};
   for (const c of LIBRARY_CHANNELS) {

@@ -11,6 +11,7 @@ import * as E from "./eshia.mjs";
 import { alfeker, shiabooks, ablibrary, hassanain, husseini, kadhim, najafDesert, maaref, turath, jawadain } from "./sources.mjs";
 import { merge, FIELDS } from "./merge.mjs";
 import { telegram, CHANNELS, LIBRARY_CHANNELS, MEDIA } from "./telegram.mjs";
+import { eshiaLessons, youtubeLessons, stageOf } from "./lessons.mjs";
 
 const require = createRequire(import.meta.url);
 const W = require("../../books/words.js");
@@ -123,12 +124,16 @@ function write() {
   const lessons = Object.values(tg.lessons || {}).filter((l) => !l.dead && l.kind !== "user")
     .map((l) => [l.u, l.d, l.ch, l.t || "", l.n || "", l.x || ""]).sort((a, b) => (a[3] || a[1]).localeCompare(b[3] || b[1], "ar"));
   // Book libraries on Telegram (many show no posts on the web: the app opens them in Telegram).
+  // Lesson series: [source, id, title, teacher, where, stage, language, how many, media, extra]
+  //   «مدرسة الفقاهة»: extra = the years [label, subject, path]; YouTube: extra = [first video, about]
+  const series = Object.values(state.series || {}).flat().map((r) => [r.src, r.id, r.title, r.teacher || "", r.where || "",
+    r.level || stageOf(r.title + " " + (r.about || "")), r.lang || "ar", r.count || 0, r.media || "", r.src === "q" ? r.parts : [r.video || "", r.about || ""]]);
   const libraries = LIBRARY_CHANNELS.map((c) => { const p = (tg.libs || {})[c.u] || {}; return [c.u, p.t || c.name, p.n || "", p.x || c.note || "", c.name]; });
   const counts = {}; for (const r of rows) counts[r.src] = (counts[r.src] || 0) + 1;
   fs.writeFileSync(P("catalog.json"), JSON.stringify({ format: 2, updated: new Date().toISOString(), fields: FIELDS,
     sources: Object.fromEntries(Object.entries(LIBRARIES).map(([k, v]) => [k, { ...v, count: counts[k] || 0 }])),
     channels: CHANNELS.map((c) => [c.ch, c.name]),
-    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes,label]]", "kind b|r|j"], books, lessons, libraries }));
+    columns: ["title", "author", "field", "lang", "died", "fullAuthor", "topics", "sources[[src,id,volumes,label]]", "kind b|r|j"], books, lessons, libraries, series }));
   // The page-text index of earlier versions is no longer used.
   fs.rmSync(P("seg"), { recursive: true, force: true }); fs.rmSync(P("index.json"), { force: true });
   fs.writeFileSync(P("state.json"), JSON.stringify(state));
@@ -151,6 +156,14 @@ async function main() {
   // Telegram channels (a part each run, then only what is new).
   state.tg = state.tg || {};
   await telegram(get, log, state.tg, +process.env.BOOKS_TG_REQUESTS || 1800).catch((e) => log("telegram failed", e.message));
+  // Lesson series: the archive of «مدرسة الفقاهة» each week, the YouTube playlists the channels posted.
+  state.series = state.series || {};
+  if (!state.series.q || Date.now() - (state.sourcesAt.q || 0) > 7 * 864e5 - 3 * 3600e3) {
+    const rows = await eshiaLessons(get, log).catch((e) => { log("eshia lessons failed", e.message); return null; });
+    if (rows && rows.length >= 50) { state.series.q = rows; state.sourcesAt.q = Date.now(); } else log("eshia lessons: kept the previous list", rows ? rows.length : 0);
+  }
+  state.ytCache = state.ytCache || {};
+  state.series.y = await youtubeLessons(get, log, state.tg.yt || {}, state.ytCache).catch((e) => { log("youtube failed", e.message); return state.series.y || []; });
   write();
   // Cards of eshia's books, until the time is up (the most read fields first).
   const ids = Object.keys(state.books).filter((id) => !state.books[id].lang).sort((a, b) => (state.books[a].c ?? 99) - (state.books[b].c ?? 99) || a - b);
