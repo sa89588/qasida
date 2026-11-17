@@ -107,6 +107,7 @@ export function playlistIds(html) {
   for (const m of unent(String(html)).matchAll(YT_LINK)) if (/^(PL|OL|UU|FL)/.test(m[1])) ids.add(m[1]);
   return [...ids];
 }
+const BOILER = /Share your videos with friends|مشاركة الفيديوهات مع الأصدقاء|Enjoy the videos and music you love/i;
 /* The playlist page: name, channel, number of videos, first video. */
 export function parseYoutubePlaylist(html) {
   const h = String(html);
@@ -116,7 +117,7 @@ export function parseYoutubePlaylist(html) {
   const owner = unent((h.match(/"ownerText":\{"runs":\[\{"text":"([^"]+)"/) || h.match(/"text":\{"content":"([^"]+)"/) || [])[1] || "").trim();
   const video = (h.match(/"videoId":"([\w-]{11})"/) || [])[1] || "";
   const about = unent((h.match(/<meta name="description" content="([^"]*)"/) || [])[1] || "").trim();
-  return { title, owner, count, video, about: /Share your videos with friends/i.test(about) ? "" : about.slice(0, 160) };
+  return { title, owner, count, video, about: BOILER.test(about) ? "" : about.slice(0, 160) };
 }
 export async function youtubeLessons(get, log, ids, cache) {
   // A playlist's page is read again every few weeks: names and sizes change slowly.
@@ -145,7 +146,7 @@ export async function youtubeLessons(get, log, ids, cache) {
 const STAGES = [
   ["خارج", /بحث\s*(ال)?خارج|درس\s*(ال)?خارج|خارج\s*(ال)?(فقه|اصول|أصول)|درس‌?\s*خارج/],
   ["سطوح", /المكاسب|مكاسب|الرسائل|فرائد\s*الاصول|فرائد\s*الأصول|الكفاي[ةه]|كفاي[ةه]\s*الا?أ?صول|الحلق[ةه]\s*الثالث[ةه]|اللمع[ةه]|الروض[ةه]\s*البهي[ةه]|نهاي[ةه]\s*الحكم[ةه]|مكاسب|رسائل|کفایه|لمعه/],
-  ["مقدمات", /الآجرومي[ةه]|الاجرومي[ةه]|قطر\s*الندى|ابن\s*عقيل|الالفي[ةه]|الألفي[ةه]|مغني\s*اللبيب|المنطق|حاشي[ةه]\s*ملا|البلاغ[ةه]|مختصر\s*المعاني|التصريف|شرح\s*الامثل[ةه]|الصرف|النحو|الباب\s*الحادي\s*عشر|الحلق[ةه]\s*(الاولى|الأولى|الثاني[ةه])|اصول\s*الفقه|أصول\s*الفقه|بداي[ةه]\s*الحكم[ةه]|عقائد\s*الامامي[ةه]|عقائد\s*الإمامي[ةه]|الموجز|جامع\s*المقدمات|البهج[ةه]\s*المرضي[ةه]|شرح\s*النظام/]
+  ["مقدمات", /الآجرومي[ةه]|الاجرومي[ةه]|قطر\s*الندى|ابن\s*عقيل|الالفي[ةه]|الألفي[ةه]|مغني\s*اللبيب|المنطق|حاشي[ةه]\s*ملا|جواهر\s*البلاغ[ةه]|البلاغ[ةه]\s*الواضح[ةه]|مختصر\s*المعاني|التصريف|شرح\s*الامثل[ةه]|الصرف|النحو|الباب\s*الحادي\s*عشر|الحلق[ةه]\s*(الاولى|الأولى|الثاني[ةه])|اصول\s*الفقه|أصول\s*الفقه|بداي[ةه]\s*الحكم[ةه]|عقائد\s*الامامي[ةه]|عقائد\s*الإمامي[ةه]|الموجز|جامع\s*المقدمات|البهج[ةه]\s*المرضي[ةه]|شرح\s*النظام/]
 ];
 export function stageOf(text) {
   for (const [name, re] of STAGES) if (re.test(text)) return name;

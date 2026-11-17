@@ -33,7 +33,7 @@
     throw last || new Error("offline");
   }
 
-  const S = { catalog: null, books: [], byKey: new Map(), fields: [], sources: {}, lessons: [], channels: [], libraries: [] };
+  const S = { catalog: null, books: [], byKey: new Map(), fields: [], sources: {}, lessons: [], channels: [], libraries: [], series: [] };
   const listeners = [];
   const skey = (s) => s[0] + s[1];
   function take(c) {
@@ -48,6 +48,13 @@
     S.lessons = (c.lessons || []).map(([u, d, ch, t, n, x]) => ({ u, d, ch, t: t || "", n: n || "", x: x || "", key: M.compact(d + " " + (t || "") + " " + (x || "")) + " " + u.toLowerCase() }));
     S.channels = c.channels || [];
     S.libraries = (c.libraries || []).map(([u, t, n, x, name]) => ({ u, t: t || name, n: n || "", x: x || "", d: name || "" }));
+    // Lesson series: [source, id, title, teacher, where, stage, language, how many, media, extra]
+    S.series = (c.series || []).map(([src, id, title, teacher, where, stage, lang, n, media, extra]) => {
+      const x = { src, id, title, teacher, where, stage, lang, n, media, parts: src === "q" ? extra || [] : [], video: src === "y" ? (extra || [])[0] || "" : "", about: src === "y" ? String((extra || [])[1] || "").replace(/^.*(Share your videos with friends|مشاركة الفيديوهات مع الأصدقاء).*$/s, "") : "" };
+      x.key = M.compact([title, teacher, where, x.about].join(" "));
+      x.tkey = M.compact(x.parts.map((p) => p[1]).join(" "));
+      return x;
+    });
     S.byKey = new Map();
     for (const b of S.books) for (const s of b.sources) S.byKey.set(s.src + s.id, b);
     for (const f of listeners) try { f(); } catch {}
@@ -145,8 +152,25 @@
     if (!ks.length) return [];
     return S.lessons.filter((l) => ks.some((k) => l.key.includes(k))).sort((a, b) => (+b.n || 0) - (+a.n || 0)).slice(0, 15);
   }
+  /* Lesson series: every word in the title, teacher, place or the subjects taught; titles first. */
+  function searchSeries(q, stage) {
+    const parts = M.norm(q || "").split(/\s+/).filter((w) => w.length >= 2).map((w) => w.replace(/^(و?ال)(?=..)/, ""));
+    const pool = stage ? S.series.filter((x) => stage === "فيديو" ? x.src === "y" : x.stage === stage) : S.series;
+    if (!parts.length) return pool.slice().sort(bySize);
+    const hit = (x) => parts.every((p) => x.key.includes(p) || x.tkey.includes(p));
+    return pool.filter(hit).sort((a, b) => (parts.every((p) => b.key.includes(p)) - parts.every((p) => a.key.includes(p))) || bySize(a, b));
+  }
+  const bySize = (a, b) => (b.n || 0) - (a.n || 0);
+  /* Series that explain a book: its name in the series' title or in a year's subject («كتاب المكاسب — القسم الأول»). */
+  function seriesFor(b) {
+    const k = M.compact(b.title.replace(/^(كتاب|کتاب)\s+/, ""));
+    if (k.length < 6) return [];          // «الفقه»، «النحو»: a whole science, not one book
+    const ks = [k]; if (/^ال/.test(k) && k.length >= 7) ks.push(k.slice(2));   // «المكاسب» is also «مكاسب»
+    return S.series.filter((x) => ks.some((y) => x.key.includes(y) || x.tkey.includes(y))).sort(bySize).slice(0, 20);
+  }
+  const seriesUrl = (x, part) => x.src === "q" ? "https://www.eshia.ir" + (part ? part[2] : x.id) : "https://www.youtube.com/playlist?list=" + encodeURIComponent(x.id);
   const sourceUrl = (s) => URLS[s.src] ? URLS[s.src](s.id) : "#";
   const textSearchUrl = (q, eshiaId) => "https://ar.lib.eshia.ir/search/" + (eshiaId ? eshiaId + "/" : "") + encodeURIComponent(String(q).trim());
 
-  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, searchLessons, lessonsFor, sourceUrl, textSearchUrl, TEXT_ENGINES, SITES, get: (k) => S.byKey.get(k) };
+  root.QBooks = { load, refresh, state: S, onChange: (f) => listeners.push(f), search, searchLessons, lessonsFor, sourceUrl, textSearchUrl, searchSeries, seriesFor, seriesUrl, TEXT_ENGINES, SITES, get: (k) => S.byKey.get(k) };
 })(self);

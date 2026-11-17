@@ -127,7 +127,7 @@ function write() {
   // Lesson series: [source, id, title, teacher, where, stage, language, how many, media, extra]
   //   «مدرسة الفقاهة»: extra = the years [label, subject, path]; YouTube: extra = [first video, about]
   const series = Object.values(state.series || {}).flat().map((r) => [r.src, r.id, r.title, r.teacher || "", r.where || "",
-    r.level || stageOf(r.title + " " + (r.about || "")), r.lang || "ar", r.count || 0, r.media || "", r.src === "q" ? r.parts : [r.video || "", r.about || ""]]);
+    r.level || stageOf(r.title), r.lang || "ar", r.count || 0, r.media || "", r.src === "q" ? r.parts : [r.video || "", r.about || ""]]);
   const libraries = LIBRARY_CHANNELS.map((c) => { const p = (tg.libs || {})[c.u] || {}; return [c.u, p.t || c.name, p.n || "", p.x || c.note || "", c.name]; });
   const counts = {}; for (const r of rows) counts[r.src] = (counts[r.src] || 0) + 1;
   fs.writeFileSync(P("catalog.json"), JSON.stringify({ format: 2, updated: new Date().toISOString(), fields: FIELDS,

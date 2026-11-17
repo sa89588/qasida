@@ -47,6 +47,7 @@
     if (p.get("c")) return fieldView(+p.get("c"), +(p.get("n") || 60));
     if (p.get("k")) return kindView(p.get("k"), +(p.get("n") || 60));
     if (p.has("l")) return lessonsView(p.get("l") || "", +(p.get("n") || 80));
+    if (p.has("d")) return seriesView(p.get("d") || "", p.get("s") || "", +(p.get("n") || 60));
     if (p.has("m")) return librariesView();
     $("#q").value = "";
     home();
@@ -67,7 +68,7 @@
     const sections = el("div", { class: "cats" },
       el("a", { class: "cat sect", href: "#k=r" }, el("b", { text: "البحوث" }), el("span", { text: num(kinds.r) })),
       el("a", { class: "cat sect", href: "#k=j" }, el("b", { text: "المجلات" }), el("span", { text: num(kinds.j) })),
-      el("a", { class: "cat sect", href: "#l=" }, el("b", { text: "دروس التلكرام" }), el("span", { text: num(S.lessons.length) })),
+      el("a", { class: "cat sect", href: "#d=" }, el("b", { text: "الدروس والشروحات" }), el("span", { text: num(S.series.length + S.lessons.length) })),
       el("a", { class: "cat sect", href: "#m=" }, el("b", { text: "كل المكتبات" }), el("span", { text: num(Object.values(S.sources).filter((x) => x.count).length + B.TEXT_ENGINES.length + B.SITES.length + S.libraries.length) })));
     v.append(el("div", { class: "card" }, el("h2", { class: "sec", text: "الأقسام" }), sections),
       el("div", { class: "card" }, el("h2", { class: "sec", text: "تصفّح حسب العلم" }), grid, langs),
@@ -106,6 +107,45 @@
     v.append(ul);
     if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#k=" + k + "&n=" + (n + 120) }, "عرض المزيد (" + num(list.length - n) + ")"));
   }
+  /* ---------- lesson series: «مدرسة الفقاهة», YouTube ---------- */
+  const STAGE_CLS = { "مقدمات": "f", "سطوح": "s", "خارج": "e" };
+  function seriesRow(x) {
+    const howMany = x.src === "q" ? count(x.n, ["سنة دراسية واحدة", "سنتان", "سنوات دراسية", "سنة دراسية"]) : count(x.n, ["فيديو واحد", "فيديوان", "فيديوهات", "فيديو"]);
+    const head = el("a", { class: "brow", href: B.seriesUrl(x), target: "_blank", rel: "noopener" },
+      el("b", { text: x.title }),
+      x.about && x.src === "y" ? el("span", { class: "muted small clamp", text: x.about }) : null,
+      el("span", { class: "meta" },
+        x.stage ? el("span", { class: "src " + (STAGE_CLS[x.stage] || "f"), text: x.stage === "خارج" ? "بحث خارج" : x.stage }) : null,
+        el("span", { class: "src " + (x.src === "y" ? "t" : "e"), text: x.src === "y" ? "يوتيوب ↗" : "مدرسة الفقاهة ↗" }),
+        el("span", { class: "muted small", text: [x.teacher && !M.compact(x.title).includes(M.compact(x.teacher)) ? x.teacher : "", x.where, howMany, x.media].filter(Boolean).join(" · ") })));
+    if (!x.parts.length) return el("li", {}, head);
+    // The years of a course, each with what was taught in it.
+    const years = el("ol", { class: "years" }, x.parts.map((p) => el("li", {}, el("a", { href: B.seriesUrl(x, p), target: "_blank", rel: "noopener" }, el("b", { text: p[0] }), " ", p[1]))));
+    return el("li", {}, head, el("details", { class: "yrs" }, el("summary", {}, "المباحث سنةً بسنة"), years));
+  }
+  function seriesView(q, stage, n) {
+    const v = $("#view"); v.replaceChildren(); status("");
+    const list = B.searchSeries(q, stage);
+    const form = el("form", { class: "search", onsubmit: (e) => { e.preventDefault(); go({ d: e.target.dq.value.trim(), ...(stage ? { s: stage } : {}) }); } },
+      el("input", { name: "dq", type: "search", value: q, placeholder: "كتاب أو أستاذ أو باب: المكاسب، الكفاية، الخمس…", "aria-label": "ابحث في الدروس" }), el("button", { class: "go", type: "submit" }, "ابحث"));
+    const chips = el("div", { class: "fields" }, ["", "مقدمات", "سطوح", "خارج", "فيديو"].map((st) => {
+      const h = "#d=" + encodeURIComponent(q) + (st ? "&s=" + encodeURIComponent(st) : "");
+      return el("a", { class: "field" + (st === stage ? " on" : ""), href: h }, el("b", { text: st ? (st === "خارج" ? "بحث خارج" : st) : "الكل" }));
+    }));
+    const tgN = q ? B.searchLessons(q).length : S.lessons.length;
+    v.append(el("a", { class: "back", href: "#" }, "→ الرئيسية"), el("h2", { class: "title", text: "الدروس والشروحات" }),
+      el("p", { class: "muted small", text: "سلاسل دروس الحوزة صوتاً ونصاً وفيديو: أرشيف البحث الخارج والسطوح في مدرسة الفقاهة (النجف وقم وكربلاء ومشهد…)، وقوائم يوتيوب التي تنشرها قنوات الدروس. كل سلسلة تفتح في مصدرها." }),
+      form, chips,
+      el("a", { class: "cat sect tgl", href: "#l=" + encodeURIComponent(q) }, el("b", { text: "قنوات الدروس في التلكرام" }), el("span", { text: num(tgN) })),
+      el("p", { class: "muted small", text: count(list.length, ["سلسلة واحدة", "سلسلتان", "سلاسل", "سلسلة"]) }));
+    const ul = el("ul", { class: "books" });
+    list.slice(0, n).forEach((x) => ul.append(seriesRow(x)));
+    v.append(ul);
+    if (list.length > n) v.append(el("a", { class: "btn ghost more", href: "#d=" + encodeURIComponent(q) + (stage ? "&s=" + encodeURIComponent(stage) : "") + "&n=" + (n + 150) }, "عرض المزيد (" + num(list.length - n) + ")"));
+    if (q) v.append(el("p", { class: "muted small" }, "وابحث عنه أيضاً في ",
+      el("a", { href: "https://www.youtube.com/results?search_query=" + encodeURIComponent("شرح " + q), target: "_blank", rel: "noopener" }, "يوتيوب ↗"), "."));
+  }
+
   function lessonRow(l) {
     const desc = l.t && M.compact(l.t) !== M.compact(l.d) ? l.d : "";
     const members = l.n ? (/^\d+$/.test(l.n) ? num(+l.n) : l.n) + " مشترك" : "";
@@ -207,10 +247,15 @@
   }
 
   function lessonsOf(b) {
-    const ls = B.lessonsFor(b);
-    if (!ls.length) return null;
-    const ul = el("ul", { class: "books" }); ls.forEach((l) => ul.append(lessonRow(l)));
-    return el("section", { class: "lessons" }, el("h3", { class: "sec", text: "دروس هذا الكتاب في التلكرام" }), ul);
+    const xs = B.seriesFor(b), ls = B.lessonsFor(b);
+    const yt = "https://www.youtube.com/results?search_query=" + encodeURIComponent("شرح " + b.title.replace(/\s*\(.*?\)\s*/g, " ").trim());
+    const ul = el("ul", { class: "books" });
+    xs.slice(0, 8).forEach((x) => ul.append(seriesRow(x)));
+    ls.slice(0, 8).forEach((l) => ul.append(lessonRow(l)));
+    return el("section", { class: "lessons" }, el("h3", { class: "sec", text: "شروحه ودروسه" + (xs.length + ls.length ? " (" + num(xs.length + ls.length) + ")" : "") }),
+      xs.length + ls.length ? ul : el("p", { class: "muted small", text: "لم أجد له سلسلة دروس في الفهرس بعد." }),
+      el("div", { class: "engines" }, el("a", { class: "eng", href: yt, target: "_blank", rel: "noopener" }, "ابحث عن شرحه في يوتيوب ↗"),
+        xs.length > 8 || ls.length > 8 ? el("a", { class: "eng", href: "#d=" + encodeURIComponent(b.title) }, "كل الدروس") : null));
   }
 
   /* ---------- search ---------- */
@@ -224,6 +269,12 @@
       el("h2", { class: "sec", text: "ابحث عن «" + q.slice(0, 40) + "» داخل نصوص الكتب" }),
       el("div", { class: "engines" }, B.TEXT_ENGINES.map((e, i) => engineRow(e, q, i === 0))),
       el("p", { class: "muted small", text: "كل مكتبة تبحث بمحركها وتعرض النتائج عندها." })));
+    const xs = B.searchSeries(q);
+    if (xs.length) {
+      const xu = el("ul", { class: "books" }); xs.slice(0, 5).forEach((x) => xu.append(seriesRow(x)));
+      v.append(el("section", { class: "card" }, el("h2", { class: "sec", text: "دروس وشروحات (" + num(xs.length) + ")" }), xu,
+        xs.length > 5 ? el("a", { class: "btn ghost more", href: "#d=" + encodeURIComponent(q) }, "كل الدروس") : null));
+    }
     const ls = B.searchLessons(q).sort((a, b) => (+b.n || 0) - (+a.n || 0));
     if (ls.length) {
       const lu = el("ul", { class: "books" }); ls.slice(0, 6).forEach((l) => lu.append(lessonRow(l)));

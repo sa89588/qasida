@@ -139,3 +139,13 @@ details.card>summary::-webkit-details-marker,.about>summary::-webkit-details-mar
 .books,.hits{grid-template-columns:minmax(0,1fr)}
 .books>li,.brow{min-width:0}
 .brow b,.clamp{overflow-wrap:anywhere}
+/* lesson series */
+.field.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.field.on span{color:#fff}
+.cat.tgl{margin:2px 0}
+.books>li>details.yrs{margin:2px 8px 0}
+.yrs>summary{cursor:pointer;font-size:.8rem;color:var(--accent);min-height:30px;display:flex;align-items:center}
+.years{margin:4px 0 6px;padding-inline-start:18px;display:grid;gap:4px;font-size:.82rem;line-height:1.6}
+.years a{text-decoration:none;color:var(--ink)}
+.years a b{color:var(--accent);font-weight:600}
+.lessons .engines{margin-top:6px}
