@@ -316,7 +316,7 @@
     catch { work(null); status("فهرس الكتب الجديد يُجهَّز الآن ويصل خلال ساعة تقريباً. أعد فتح الصفحة بعدها.", true); return; }
     work(null);
     syncClear();
-    B.onChange(() => { paintStats(); if (!params().toString()) home(); else if (params().has("m")) librariesView(); });
+    B.onChange(() => { paintStats(); if (!params().get("b")) route(); });
     route();
   })();
 })();
