@@ -111,20 +111,23 @@ function route(){
   const m = h.match(/^p-([\w-]+)$/);
   let view = "scan";
   const ml = h.match(/^list-([\w-]+)$/);
-  if (m && poemById(m[1])){ view = "poem"; renderPoem(m[1]); }
-  else if (ml && lists().some((x) => x.id === ml[1])){ view = "lists"; if (state.listOpen !== ml[1] || !$("#view-lists .lstage")) renderList(ml[1]); }
+  // Back to what is playing: its page stays as it was, the player in it goes on.
+  const playingHere = (hh) => { const n = QP.now(); return !!(n && n.home === hh && QP.busy()); };
+  if (m && poemById(m[1])){ view = "poem"; if (!(state.poemId === m[1] && $("#view-poem").firstChild && playingHere(h))) renderPoem(m[1]); }
+  else if (ml && lists().some((x) => x.id === ml[1])){ view = "list"; if (state.listOpen !== ml[1] || !$("#view-list .lstage")) renderList(ml[1]); }
   else if (h === "lists"){ view = "lists"; renderLists(); }
   else if (h === "index" || h === "settings") view = h;
   if (view !== "scan" && state.stream) stopCamera();
-  if (view !== "poem" && !(view === "lists" && ml)) pauseMedia();
-  if (!(view === "lists" && ml)) state.listOpen = null;
-  for (const v of ["scan", "poem", "index", "settings", "lists"]) $("#view-" + v).hidden = v !== view;
-  const tab = view === "poem" ? null : view;
+  // Leaving the page of what plays does not stop it: the bar at the bottom follows (and the phone's lock screen).
+  if (!QP.busy()) { if (view !== "poem" && view !== "list") QP.stop(); if (view !== "list") state.listOpen = null; }
+  for (const v of ["scan", "poem", "index", "settings", "lists", "list"]) $("#view-" + v).hidden = v !== view;
+  const tab = view === "poem" ? null : view === "list" ? "lists" : view;
   $$(".tabbar a").forEach((a) => { if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (state.view !== view) window.scrollTo({ top: 0, behavior: "auto" });
   state.view = view;
   if (view === "settings"){ fillSettings(); if (!S.ready()) $("#keysCard").open = true; }
   if (view === "scan") renderSmartCard();
+  paintMini();
 }
 
 /* ---------- on-device reader ---------- */
@@ -712,7 +715,7 @@ function openPoem(p, page){ state.page = page || null; state.pageFor = p.id; go(
 
 function renderPoem(id){
   const p = poemById(id); if (!p) return;
-  if (state.poemId !== id || !$("#view-poem").firstChild){ pauseMedia(); }
+  if ((state.poemId !== id || !$("#view-poem").firstChild) && !QP.busy()){ pauseMedia(); }
   const page = state.pageFor === id ? state.page : null;
   state.poemId = id;
   pushHistory(p);
@@ -819,7 +822,7 @@ const playerExtras = (item) => {
   return [mediaActions(p, r), QP.favRow(p, r)];
 };
 function playerFor(host, queue, index, autoplay, more){
-  return QP.mount(host, Object.assign({ queue, index, autoplay, audio: $("#audio"), artwork: abs("icons/icon-512.png"),
+  return QP.mount(host, Object.assign({ queue, index, autoplay, audio: $("#audio"), artwork: abs("icons/icon-512.png"), home: location.hash.replace(/^#/, ""), defer: !autoplay,
     resolveAudio: (a, r) => setAudioSource(a, r),
     videoSrc: async (r) => { const item = await QM.get(r.key); if (!item || !item.blob) throw new Error("missing"); return URL.createObjectURL(item.blob); },
     extras: playerExtras }, more || {}));
@@ -827,6 +830,24 @@ function playerFor(host, queue, index, autoplay, more){
 /* Something is playing (or the person started ShiaVoice's own player): don't redraw the page under it. */
 const playerBusy = () => QP.busy();
 function pauseMedia(){ QP.stop(); try { $("#audio").pause(); } catch {} }
+/* The bar above the tabs: what plays, while the person reads another page. */
+function paintMini(){
+  const bar = $("#mini"); if (!bar) return;
+  const n = QP.now();
+  const here = n && location.hash.replace(/^#/, "") === n.home;
+  bar.hidden = !n || here || !QP.busy();
+  document.body.classList.toggle("has-mini", !bar.hidden);
+  if (bar.hidden) return;
+  $("#miniT").textContent = n.title; $("#miniW").textContent = n.who;
+  const b = $("#miniPlay");
+  b.disabled = !n.control; b.innerHTML = n.playing ? IC.pause : IC.play; b.setAttribute("aria-label", n.playing ? "إيقاف مؤقت" : "تشغيل");
+  $("#miniNext").hidden = !n.many;
+}
+QP.onNow(paintMini);
+$("#miniOpen").addEventListener("click", () => { const n = QP.now(); if (n) go(n.home); });
+$("#miniPlay").addEventListener("click", () => { const n = QP.now(); if (n) n.toggle(); });
+$("#miniNext").addEventListener("click", () => { const n = QP.now(); if (n) n.next(); });
+$("#miniX").addEventListener("click", () => { pauseMedia(); paintMini(); });
 
 /* ---------- favourites and lists ---------- */
 /* «قوائمي»: favourites and the person's lists. */
@@ -848,7 +869,7 @@ function renderLists(){
 function renderList(id){
   const L = lists().find((x) => x.id === id); if (!L) return;
   state.listOpen = id;
-  const v = $("#view-lists"); v.replaceChildren();
+  const v = $("#view-list"); v.replaceChildren();
   const stage = el("div", { class: "card lstage" });
   const edit = el("div", { class: "recs" });
   v.append(el("button", { type: "button", class: "back", onclick: () => go("lists") }, el("span", { html: IC.back }), "قوائمي"),

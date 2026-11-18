@@ -115,6 +115,7 @@
     });
     return ytApiP;
   }
+  const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   let sharedAudio = null;
   function audioEl(o) {
     if (o.audio) return o.audio;
@@ -131,12 +132,15 @@
         control: true, media: a, ready: Promise.resolve().then(setSrc),
         play: () => a.play(), pause: () => a.pause(), seek: (t) => { a.currentTime = t; }, rate: (x) => { a.playbackRate = x; },
         state: () => ({ playing: !a.paused, t: a.currentTime, d: a.duration }),
-        destroy: () => { a.pause(); a.onplay = a.onpause = a.ondurationchange = a.ontimeupdate = a.onloadedmetadata = a.onended = a.onerror = null; }
+        // Into another recording on the same element: no pause, so a locked phone goes on to the next one.
+        destroy: (next) => { if (next !== "audio") a.pause(); a.onplay = a.onpause = a.ondurationchange = a.ontimeupdate = a.onloadedmetadata = a.onended = a.onerror = null; }
       };
     },
     video(item, ctx, o) {
       const v = el("video", { playsinline: true, preload: "metadata", class: "qp-video", controls: true });
-      v.onplay = v.onpause = v.ondurationchange = v.ontimeupdate = v.onloadedmetadata = ctx.changed;
+      v.onplay = v.ondurationchange = v.ontimeupdate = v.onloadedmetadata = ctx.changed;
+      // The phone pauses a video when the screen goes off; its sound goes on where the system allows it.
+      v.onpause = () => { if (ctx.keepAlive()) setTimeout(() => v.play().catch(() => {}), 200); ctx.changed(); };
       v.onended = ctx.ended; v.onerror = () => ctx.fail();
       let url = null;
       const ready = Promise.resolve(o.videoSrc ? o.videoSrc(item.rec) : item.rec.src).then((u) => { if (!u) throw new Error("missing"); url = u; v.src = u; });
@@ -168,7 +172,12 @@
           playerVars: { playsinline: 1, rel: 0, modestbranding: 1, autoplay: ctx.autoplay ? 1 : 0 },
           events: {
             onReady: () => { eng.control = true; timer = setInterval(() => { if (alive) ctx.changed(); }, 500); readyRes(); ctx.changed(); },
-            onStateChange: (e) => { if (e.data === 0) ctx.ended(); ctx.changed(); },
+            onStateChange: (e) => {
+              if (e.data === 0) ctx.ended();
+              // YouTube pauses itself when the screen goes off or the app goes to the background: go on playing.
+              if (e.data === 2 && ctx.keepAlive()) setTimeout(() => { try { pl.playVideo(); } catch {} }, 250);
+              ctx.changed();
+            },
             onError: () => ctx.fail()
           }
         });
@@ -199,9 +208,13 @@
   /* o: { queue: [{rec, title, poem:{id,title,poet,temp}}], index, autoplay, audio, resolveAudio(a, rec), videoSrc(rec),
           extras(item) → nodes or null (null: favourites + the source's own download), artwork, showAutoplay, queueTitle, onIndex(i) } */
   function mount(host, o) {
-    stop();
+    // The page of what plays, drawn again: the same player, still playing.
+    if (o.home && current && current.home === o.home && current.now()) { host.replaceChildren(current.el); return current; }
+    // Something else plays: this one waits until ▶ (then that one stops).
+    const wait = !!o.defer && busy();
+    if (!wait) stop();
     const queue = o.queue || [];
-    const P = { i: -1, eng: null, resumed: false, lastSave: 0, speed: 1, alive: true, touched: false };
+    const P = { i: -1, eng: null, resumed: false, lastSave: 0, speed: 1, alive: true, touched: false, userPaused: false, hiddenAt: 0, playingAtHide: false };
     const art = el("div", { class: "qp-art" });
     const title = el("b", { class: "qp-title" }), who = el("span", { class: "qp-who" }), meta = el("div", { class: "qp-meta" });
     const count = el("span", { class: "qp-count" });
@@ -278,11 +291,12 @@
             el("button", { type: "button", class: "qp-link", onclick: () => { e.seek(0); resume.hidden = true; } }, "من البداية"));
         }
       }
-      if (s.playing) savePos(false);
+      if (s.playing) { savePos(false); P.userPaused = false; }
       if ("mediaSession" in navigator) {
         try { navigator.mediaSession.playbackState = s.playing ? "playing" : "paused"; } catch {}
         try { if (ctrl && isFinite(s.d) && s.d > 0) navigator.mediaSession.setPositionState({ duration: s.d, position: Math.min(s.t, s.d), playbackRate: P.speed }); } catch {}
       }
+      if (s.playing !== P.lastPlaying) { P.lastPlaying = s.playing; tell(); }
     };
     const ended = () => {
       const k = posKey(queue[P.i].rec);
@@ -312,12 +326,16 @@
       } catch {}
       const h = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
       const ok = () => P.eng && P.eng.control && !(P.eng.own && P.eng.own());
-      h("play", () => { if (ok()) P.eng.play(); });
-      h("pause", () => { if (ok()) P.eng.pause(); });
+      // The lock screen and the notification: play, pause, previous and next, the progress bar.
+      h("play", () => { if (ok()) { P.userPaused = false; P.eng.play(); } });
+      h("pause", () => { if (ok()) { P.userPaused = true; P.eng.pause(); } });
+      h("stop", () => { if (ok()) { P.userPaused = true; P.eng.pause(); } });
       h("previoustrack", queue.length > 1 ? () => prev() : null);
       h("nexttrack", queue.length > 1 ? () => next() : null);
-      h("seekbackward", () => { if (ok()) P.eng.seek(Math.max(0, P.eng.state().t - 10)); });
-      h("seekforward", () => { if (ok()) P.eng.seek(P.eng.state().t + 10); });
+      // iPhone shows either ±10 seconds or previous/next: with a list, previous/next.
+      const skip = !(IOS && queue.length > 1);
+      h("seekbackward", skip ? () => { if (ok()) P.eng.seek(Math.max(0, P.eng.state().t - 10)); } : null);
+      h("seekforward", skip ? () => { if (ok()) P.eng.seek(P.eng.state().t + 10); } : null);
       h("seekto", (e) => { if (ok() && e && isFinite(e.seekTime)) P.eng.seek(e.seekTime); });
     };
 
@@ -364,13 +382,14 @@
       if (auto) P.touched = true;
       i = ((i % queue.length) + queue.length) % queue.length;
       savePos(true);
-      if (P.eng) { try { P.eng.destroy(); } catch {} P.eng = null; }
-      P.i = i; P.resumed = !!fresh; P.lastSave = 0;
       const item = queue[i], r = item.rec, kind = engineFor(r);
+      if (P.eng) { try { P.eng.destroy(kind); } catch {} P.eng = null; }
+      P.i = i; P.resumed = !!fresh; P.lastSave = 0;
       resume.hidden = true; err.hidden = true; note.hidden = true;
       paintHead(item); paintQueue();
       surface.replaceChildren(); surface.hidden = kind === "audio";
-      const ctx = { autoplay: !!auto, changed: sync, ended: () => ended(), fail };
+      const ctx = { autoplay: !!auto, changed: sync, ended: () => ended(), fail,
+        keepAlive: () => document.hidden && P.playingAtHide && !P.userPaused && Date.now() - P.hiddenAt < 5000 };
       const eng = ENGINES[kind](item, ctx, o);
       P.eng = eng;
       if (eng.el) surface.append(eng.el);
@@ -399,7 +418,7 @@
     bPrev.addEventListener("click", prev);
     bNext.addEventListener("click", next);
     bPrev.disabled = bNext.disabled = queue.length < 2;
-    bPlay.addEventListener("click", () => { P.touched = true; if (!P.alive) { load(P.i, true); return; } const e = P.eng; if (!e) return; if (e.state().playing) e.pause(); else { setSession(queue[P.i]); Promise.resolve(e.play()).catch(() => fail()); } });
+    bPlay.addEventListener("click", () => { P.touched = true; if (!P.alive) { load(P.i, true); return; } const e = P.eng; if (!e) return; if (e.state().playing) { P.userPaused = true; e.pause(); } else { P.userPaused = false; setSession(queue[P.i]); Promise.resolve(e.play()).catch(() => fail()); } });
     bBack.addEventListener("click", () => { const e = P.eng; if (e) e.seek(Math.max(0, e.state().t - 10)); });
     bFwd.addEventListener("click", () => { const e = P.eng; if (e) e.seek(e.state().t + 10); });
     seek.addEventListener("input", () => { const e = P.eng; if (!e) return; const s = e.state(); if (isFinite(s.d)) e.seek(seek.value / 1000 * s.d); });
@@ -408,7 +427,10 @@
       bSpeed.textContent = ar(P.speed) + "×"; bSpeed.setAttribute("aria-label", "السرعة " + ar(P.speed));
       try { P.eng && P.eng.rate(P.speed); } catch {}
     });
-    const onHide = () => savePos(true);
+    const onHide = () => {
+      savePos(true);
+      if (document.hidden) { P.hiddenAt = Date.now(); try { P.playingAtHide = !!(P.eng && P.eng.state().playing); } catch { P.playingAtHide = false; } }
+    };
     // A tap inside an embedded player (ShiaVoice) moves focus into its frame: the person started it.
     const onBlur = () => setTimeout(() => { const a = document.activeElement; if (a && a.tagName === "IFRAME" && rootEl.contains(a)) P.touched = true; }, 0);
     document.addEventListener("visibilitychange", onHide);
@@ -422,7 +444,15 @@
     }
 
     const api = {
-      el: rootEl, load, next, prev,
+      el: rootEl, load, next, prev, home: o.home || location.hash.replace(/^#/, ""),
+      // What plays now, for the bar that follows the person around the app.
+      now() {
+        const e = P.eng, item = queue[P.i]; if (!P.alive || !e || !item) return null;
+        const ctrl = e.control && !(e.own && e.own());
+        let playing = false; try { playing = ctrl && !!e.state().playing; } catch {}
+        return { title: item.title, who: item.rec.reciter || "", playing, control: ctrl, home: api.home, many: queue.length > 1,
+          toggle: () => bPlay.click(), next: () => next() };
+      },
       get index() { return P.i; },
       busy() { if (!P.alive || !P.eng) return false; if (P.touched) return true; try { return !!P.eng.state().playing; } catch { return false; } },
       stop() {
@@ -437,13 +467,26 @@
         surface.replaceChildren(); seekRow.hidden = true;
         if ("mediaSession" in navigator) for (const a of ["play", "pause", "previoustrack", "nexttrack", "seekbackward", "seekforward", "seekto"]) { try { navigator.mediaSession.setActionHandler(a, null); } catch {} }
         if (current === api) current = null;
+        tell();
       }
     };
+    if (wait) {
+      P.alive = false; P.i = Math.min(Math.max(0, o.index || 0), Math.max(0, queue.length - 1));
+      rootEl.classList.add("qp-idle");
+      if (queue.length) { paintHead(queue[P.i]); paintQueue(); }
+      seekRow.hidden = true;
+      return api;
+    }
     current = api;
     load(o.index || 0, !!o.autoplay);
+    tell();
     return api;
   }
   function stop() { if (current) current.stop(); }
+  const listeners = new Set();
+  function tell() { for (const f of listeners) { try { f(); } catch {} } }
+  const onNow = (f) => { listeners.add(f); return () => listeners.delete(f); };
+  const now = () => (current ? current.now() : null);
   const busy = () => !!(current && current.busy());
 
   /* ---------- favourites row and the list picker ---------- */
@@ -471,6 +514,6 @@
     document.body.append(sheet); document.addEventListener("keydown", esc); name.focus();
   }
 
-  root.QPlayer = { mount, stop, busy, describe, clock, toSec, prefs, setPref, favRow, pickList, listQueue,
+  root.QPlayer = { mount, stop, busy, now, onNow, describe, clock, toSec, prefs, setPref, favRow, pickList, listQueue,
     store: { lists, saveLists, inList, addToList, removeFromList, newList, deleteList, recKey } };
 })(self);
