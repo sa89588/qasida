@@ -19,8 +19,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=23">
-<link rel="stylesheet" href="player.css?v=22">
+<link rel="stylesheet" href="styles.css?v=25">
+<link rel="stylesheet" href="player.css?v=25">
 </head>
 <body>
 <header class="appbar">
@@ -169,6 +169,17 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <p class="muted small">مطفأ افتراضياً. عند تشغيله يبدأ أول تسجيل يمكن تشغيله وحده (يوتيوب أو رافد أو ملفاتك)؛ مشغّل صوت الشيعة لا يبدأ إلا بضغطة منك. التكرار (بلا تكرار · كرّر هذا · كرّر الكل) من الزر بجانب التسجيلات، والمفضلة وقوائم التشغيل من «قوائمي».</p>
     </div>
 
+    <details class="card fold">
+      <summary class="card-t">يوتيوب والشاشة مقفولة</summary>
+      <p class="muted small">يوتيوب يوقف مقاطعه على الهاتف عند قفل الشاشة أو الخروج من التطبيق، ولا يستطيع تطبيق ويب أن يغيّر ذلك ولا أن يحوّل المتصفح إلى نسخة الحاسبة بنفسه. الحل من المتصفح:</p>
+      <ol class="muted small">
+        <li><b>فايرفوكس (أندرويد):</b> افتح التطبيق في فايرفوكس، ثم القائمة ⋮ ← فعّل «موقع سطح المكتب»، وشغّل المقطع، ثم اقفل الشاشة.</li>
+        <li><b>كروم (أندرويد):</b> افتح التطبيق في كروم نفسه (لا من أيقونة الشاشة الرئيسية)، ثم ⋮ ← «موقع سطح المكتب».</li>
+        <li><b>آيفون:</b> شغّل المقطع ملء الشاشة، ثم اخرج إلى الشاشة الرئيسية فيكمل في نافذة صغيرة؛ أو اختر تسجيلاً صوتياً (رافد أو صوت الشيعة) إن وُجد.</li>
+      </ol>
+      <p class="muted small">التسجيلات الصوتية لا تحتاج شيئاً من هذا: تكمل والشاشة مقفولة.</p>
+    </details>
+
     <details class="card fold" id="syncCard">
       <summary class="card-t">مفاتيحي على كل أجهزتي</summary>
       <p class="muted small">احفظ المفتاحين مرة واحدة، مشفّرين بكلمة سر، في مستودعك على GitHub. بعدها افتح التطبيق من أي جهاز (آيباد، هاتف آخر) واسترجعهما بكلمة السر نفسها. يُحفظ النص المشفّر فقط؛ لا يُفتح بدون كلمة السر.</p>
@@ -240,7 +251,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
       <p class="muted small"><a href="books/">مكتبة الكتب</a>: فهرس كتب الحوزة والكتب الشيعية العربية، والبحث في نصوصها.</p>
-      <p class="muted small" id="verLine">الإصدار ٢٣</p>
+      <p class="muted small" id="verLine">الإصدار ٢٥</p>
     </div>
   </section>
 </main>
@@ -296,7 +307,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <script src="lite/library.js?v=8"></script>
 <script src="keysync.js?v=21"></script>
 <script src="scanner.js?v=21"></script>
-<script src="player.js?v=21"></script>
-<script src="app.js?v=23"></script>
+<script src="player.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
