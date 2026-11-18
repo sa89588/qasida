@@ -19,8 +19,8 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=24">
-<link rel="stylesheet" href="player.css?v=23">
+<link rel="stylesheet" href="styles.css?v=23">
+<link rel="stylesheet" href="player.css?v=22">
 </head>
 <body>
 <header class="appbar">
@@ -123,7 +123,6 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 
   <!-- الإعدادات -->
   <section class="view" id="view-lists" hidden aria-labelledby="listsH"></section>
-  <section class="view" id="view-list" hidden aria-label="القائمة"></section>
 
   <section class="view" id="view-settings" hidden aria-labelledby="setH">
     <div class="view-head"><h2 id="setH">الإعدادات</h2></div>
@@ -241,7 +240,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
       <h3 class="card-t">عن التطبيق</h3>
       <p class="muted small">تُشغَّل التسجيلات من مصادرها (يوتيوب وشبكة رافد وغيرها) داخل التطبيق. القراءة على الهاتف بمكتبة Tesseract مفتوحة المصدر، والتعرّف الذكي عبر Google Gemini.</p>
       <p class="muted small"><a href="books/">مكتبة الكتب</a>: فهرس كتب الحوزة والكتب الشيعية العربية، والبحث في نصوصها.</p>
-      <p class="muted small" id="verLine">الإصدار ٢٤</p>
+      <p class="muted small" id="verLine">الإصدار ٢٣</p>
     </div>
   </section>
 </main>
@@ -255,12 +254,6 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
   <p class="note" id="camNote" hidden><span id="noteText"></span><button type="button" class="note-x" id="noteX" aria-label="إغلاق">×</button></p>
 </div>
 
-<div class="mini" id="mini" hidden role="region" aria-label="يُشغَّل الآن">
-  <button type="button" class="mini-open" id="miniOpen" aria-label="افتح ما يُشغَّل"><b id="miniT"></b><span id="miniW"></span></button>
-  <button type="button" class="mini-b" id="miniNext" aria-label="التالي" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 6l8.5 6L6 18zM16 6h2v12h-2z"/></svg></button>
-  <button type="button" class="mini-b mini-play" id="miniPlay" aria-label="تشغيل"></button>
-  <button type="button" class="mini-b" id="miniX" aria-label="أوقف التشغيل"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 10.6 4.9-4.9 1.4 1.4-4.9 4.9 4.9 4.9-1.4 1.4-4.9-4.9-4.9 4.9-1.4-1.4 4.9-4.9-4.9-4.9 1.4-1.4z"/></svg></button>
-</div>
 <nav class="tabbar" aria-label="الأقسام">
   <a href="#scan" data-tab="scan">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M7 12h10"/></svg>
@@ -303,7 +296,7 @@ if (location.pathname.endsWith("/")) location.replace(location.pathname + "index
 <script src="lite/library.js?v=8"></script>
 <script src="keysync.js?v=21"></script>
 <script src="scanner.js?v=21"></script>
-<script src="player.js?v=24"></script>
-<script src="app.js?v=24"></script>
+<script src="player.js?v=21"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
