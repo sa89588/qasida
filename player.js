@@ -115,6 +115,16 @@
     });
     return ytApiP;
   }
+  const ANDROID = /Android/i.test(navigator.userAgent);
+  /* When the screen goes off, YouTube's phone player pauses itself. The page notes what was playing then,
+     and asks YouTube to go on (Android lets the sound go on; an iPhone does not). */
+  const hideNote = { at: 0, playing: false };
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    hideNote.at = Date.now();
+    try { hideNote.playing = !!(current && current.playingNow()); } catch { hideNote.playing = false; }
+  }, true);
+  const pausedByHiding = () => document.hidden && hideNote.playing && Date.now() - hideNote.at < 6000;
   let sharedAudio = null;
   function audioEl(o) {
     if (o.audio) return o.audio;
@@ -168,7 +178,15 @@
           playerVars: { playsinline: 1, rel: 0, modestbranding: 1, autoplay: ctx.autoplay ? 1 : 0 },
           events: {
             onReady: () => { eng.control = true; timer = setInterval(() => { if (alive) ctx.changed(); }, 500); readyRes(); ctx.changed(); },
-            onStateChange: (e) => { if (e.data === 0) ctx.ended(); ctx.changed(); },
+            onStateChange: (e) => {
+              if (e.data === 0) ctx.ended();
+              if (e.data === 2 && pausedByHiding()) {
+                // Twice: the first call can come before YouTube has finished pausing.
+                setTimeout(() => { try { pl.playVideo(); } catch {} }, 300);
+                setTimeout(() => { try { if (pl.getPlayerState() !== 1) pl.playVideo(); } catch {} }, 1500);
+              }
+              ctx.changed();
+            },
             onError: () => ctx.fail()
           }
         });
@@ -353,7 +371,9 @@
       const nodes = [favRow(p, r)];
       if (r.type === "shiavoice") nodes.push(el("p", { class: "qp-dl" }, el("a", { class: "qp-chip", href: "https://shiavoice.com/play-" + encodeURIComponent(r.id), target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تنزيل من صوت الشيعة"),
         el("span", { class: "qp-small", text: "يفتح صفحة الملف، وفيها زر التحميل." })));
-      else if (r.type === "youtube") nodes.push(el("p", { class: "qp-dl" }, el("a", { class: "qp-chip", href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتح في يوتيوب")));
+      else if (r.type === "youtube") nodes.push(el("p", { class: "qp-dl" }, el("a", { class: "qp-chip", href: "https://www.youtube.com/watch?v=" + r.id, target: "_blank", rel: "noopener" }, "افتح في يوتيوب"),
+        // Firefox with «Desktop site» keeps YouTube playing with the screen off.
+        ANDROID ? el("a", { class: "qp-chip", href: "intent://www.youtube.com/watch?v=" + encodeURIComponent(r.id) + "#Intent;scheme=https;package=org.mozilla.firefox;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=org.mozilla.firefox") + ";end" }, "شغّله بالخلفية في فايرفوكس") : null));
       else if (r.type === "audio" && r.src) nodes.push(el("p", { class: "qp-dl" }, el("a", { class: "qp-chip", href: r.src, download: "", target: "_blank", rel: "noopener" }, el("span", { html: IC.down }), "تنزيل")));
       return nodes;
     }
@@ -424,6 +444,7 @@
     const api = {
       el: rootEl, load, next, prev,
       get index() { return P.i; },
+      playingNow() { try { return !!(P.alive && P.eng && P.eng.state().playing); } catch { return false; } },
       busy() { if (!P.alive || !P.eng) return false; if (P.touched) return true; try { return !!P.eng.state().playing; } catch { return false; } },
       stop() {
         if (!P.alive) return;
