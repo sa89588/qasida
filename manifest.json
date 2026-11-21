@@ -1,0 +1,66 @@
+{
+ "updated": "2026-11-21T12:54:31.720Z",
+ "complete": true,
+ "sections": {
+  "enashid": {
+   "file": "sv-enashid.json",
+   "count": 4169,
+   "hash": "2a1a164e0cda"
+  },
+  "mohadrat": {
+   "file": "sv-mohadrat.json",
+   "count": 92624,
+   "hash": "29310a8fc1bf"
+  },
+  "quran": {
+   "file": "sv-quran.json",
+   "count": 18931,
+   "hash": "aeb5830ccbff"
+  },
+  "letmiat": {
+   "file": "sv-letmiat.json",
+   "count": 35545,
+   "hash": "6c0d4703f13b"
+  },
+  "afrah": {
+   "file": "sv-afrah.json",
+   "count": 5959,
+   "hash": "c01bad55afbd"
+  },
+  "hawza": {
+   "file": "sv-hawza.json",
+   "count": 88820,
+   "hash": "ad3ed9069b88"
+  },
+  "ed3ie": {
+   "file": "sv-ed3ie.json",
+   "count": 5067,
+   "hash": "3dd8184660c7"
+  },
+  "zeyarat": {
+   "file": "sv-zeyarat.json",
+   "count": 956,
+   "hash": "0f424f2c977f"
+  },
+  "other": {
+   "file": "sv-other.json",
+   "count": 103,
+   "hash": "564b81d19122"
+  },
+  "qesaed": {
+   "file": "sv-qesaed.json",
+   "count": 606,
+   "hash": "0de28b00a1ba"
+  },
+  "khotab": {
+   "file": "sv-khotab.json",
+   "count": 244,
+   "hash": "9e44f65edc83"
+  },
+  "kutub": {
+   "file": "sv-kutub.json",
+   "count": 406,
+   "hash": "49d5ac61c91b"
+  }
+ }
+}

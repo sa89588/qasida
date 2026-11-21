@@ -1,0 +1,124 @@
+{
+ "updated": "2026-11-10T21:53:56.242Z",
+ "format": 4,
+ "count": 18418,
+ "sources": {
+  "doro": 743,
+  "aghani": 167,
+  "shiapoem": 17,
+  "tg": 17491
+ },
+ "telegram": {
+  "qasaedmaqtobah": "complete",
+  "aabas78": "complete",
+  "qassad19": "complete"
+ },
+ "note": "words are 24-bit codes, unordered; read each poem at its url",
+ "chunks": [
+  {
+   "file": "lyrics/doro-0.json",
+   "count": 743,
+   "hash": "2c3ea81667e9"
+  },
+  {
+   "file": "lyrics/aghani-0.json",
+   "count": 167,
+   "hash": "c4d463875174"
+  },
+  {
+   "file": "lyrics/shiapoem-0.json",
+   "count": 17,
+   "hash": "814ee7c49716"
+  },
+  {
+   "file": "lyrics/tg-0.json",
+   "count": 1000,
+   "hash": "c475e5ead9d7"
+  },
+  {
+   "file": "lyrics/tg-1.json",
+   "count": 1000,
+   "hash": "637890e72d7b"
+  },
+  {
+   "file": "lyrics/tg-2.json",
+   "count": 1000,
+   "hash": "2f265594afdb"
+  },
+  {
+   "file": "lyrics/tg-3.json",
+   "count": 1000,
+   "hash": "58fe0e5accb6"
+  },
+  {
+   "file": "lyrics/tg-4.json",
+   "count": 1000,
+   "hash": "fcf0b2147573"
+  },
+  {
+   "file": "lyrics/tg-5.json",
+   "count": 1000,
+   "hash": "0cee6755a798"
+  },
+  {
+   "file": "lyrics/tg-6.json",
+   "count": 1000,
+   "hash": "e14011c9aaf1"
+  },
+  {
+   "file": "lyrics/tg-7.json",
+   "count": 1000,
+   "hash": "7af01f759ac9"
+  },
+  {
+   "file": "lyrics/tg-8.json",
+   "count": 1000,
+   "hash": "f8dca63b6bd0"
+  },
+  {
+   "file": "lyrics/tg-9.json",
+   "count": 1000,
+   "hash": "d69f39d782f2"
+  },
+  {
+   "file": "lyrics/tg-10.json",
+   "count": 1000,
+   "hash": "82b27d417b35"
+  },
+  {
+   "file": "lyrics/tg-11.json",
+   "count": 1000,
+   "hash": "d2f40ad0c0f0"
+  },
+  {
+   "file": "lyrics/tg-12.json",
+   "count": 1000,
+   "hash": "d51dd7db1cf5"
+  },
+  {
+   "file": "lyrics/tg-13.json",
+   "count": 1000,
+   "hash": "2d80cc628ec7"
+  },
+  {
+   "file": "lyrics/tg-14.json",
+   "count": 1000,
+   "hash": "7e70a2b4413c"
+  },
+  {
+   "file": "lyrics/tg-15.json",
+   "count": 1000,
+   "hash": "dabcbc1d1f92"
+  },
+  {
+   "file": "lyrics/tg-16.json",
+   "count": 1000,
+   "hash": "98dce2196ad5"
+  },
+  {
+   "file": "lyrics/tg-17.json",
+   "count": 491,
+   "hash": "0a5be1bf0b3c"
+  }
+ ]
+}
